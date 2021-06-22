@@ -47,11 +47,13 @@ class PyKdebugParser:
 
     def _format_timestamp(self, timestamp):
         if None in (self.mach_absolute_time, self.numer, self.denom, self.usecs_since_epoch, self.timezone):
-            return timestamp
+            return str(timestamp)
         offset_usec = (
                 ((timestamp - self.mach_absolute_time) * self.numer) / self.denom
         )
-        return datetime.fromtimestamp((self.usecs_since_epoch + offset_usec) / 1000000, tz=self.timezone)
+        ts = datetime.fromtimestamp((self.usecs_since_epoch + offset_usec) / 1000000, tz=self.timezone)
+        time_string = ts.strftime('%Y-%m-%d %H:%M:%S.%f')
+        return f'{time_string:<27}'
 
     def _format_kevent(self, event, trace_codes_map, thread_map):
         if event.eventid in trace_codes_map:
@@ -79,6 +81,7 @@ class PyKdebugParser:
                            else f'Error: tid {event.tid}')
             formatted_data += f'{process_rep:<27}'
         formatted_data += f'{str(event.data):<34}' if self.show_args else ''
+        return formatted_data
 
     def _format_trace(self, trace, thread_map):
         tid = trace.ktraces[0].tid
@@ -89,7 +92,7 @@ class PyKdebugParser:
 
         formatted_data = ''
         if self.show_timestamp:
-            formatted_data += str(self._format_timestamp(trace.ktraces[0].timestamp)) + ' '
+            formatted_data += self._format_timestamp(trace.ktraces[0].timestamp)
         formatted_data += f'{tid:>11} ' if self.show_tid else ''
         process_rep = (f'{process.name}({process.pid})'
                        if process.pid != -1
