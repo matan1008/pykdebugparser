@@ -2,6 +2,13 @@
 [![Pypi version](https://img.shields.io/pypi/v/pykdebugparser.svg)](https://pypi.org/project/pykdebugparser/ "PyPi package")
 [![Language grade: Python](https://img.shields.io/lgtm/grade/python/g/matan1008/pykdebugparser.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/matan1008/pykdebugparser/context:python)
 
+
+- [Description](#description)
+- [Installation](#installation)
+- [Usage](#usage)
+  * [Example](#example)
+
+
 # Description
 
 `pykdebugparser` is a utility created in order to parse Darwin's (iOS and OSX) kdebug events.
@@ -52,3 +59,10 @@ with open('kdebug.bin', 'rb') as fd:
     for trace in parser.formatted_traces(fd):
         print(trace)
 ```
+
+## Example
+
+In order to produce an input file, you can use `ktrace dump`, for example:
+
+![](https://terminalizer.com/view/8514aef95032)
+
