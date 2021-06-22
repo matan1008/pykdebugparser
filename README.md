@@ -62,7 +62,5 @@ with open('kdebug.bin', 'rb') as fd:
 
 ## Example
 
-In order to produce an input file, you can use `ktrace dump`, for example:
-
-![](https://terminalizer.com/view/8514aef95032)
+In order to produce an input file, you can use `ktrace dump`, you can see an example [here](https://terminalizer.com/view/8514aef95032)
 
