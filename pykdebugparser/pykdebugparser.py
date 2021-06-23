@@ -1,4 +1,5 @@
 from datetime import datetime
+import io
 
 from pygments import highlight, lexers, formatters
 
@@ -28,22 +29,23 @@ class PyKdebugParser:
         self.timezone = None
         self.thread_map = {}
 
-    def kevents(self, kdebug):
+    def kevents(self, kdebug: io.IOBase):
         events_generator = KdBufParser(thread_map=self.thread_map).parse(kdebug)
         if self.filter_tid is not None:
             events_generator = filter(lambda e: e.tid != self.filter_tid, events_generator)
         return events_generator
 
-    def formatted_kevents(self, kdebug):
-        trace_codes_map = default_trace_codes()
+    def formatted_kevents(self, kdebug: io.IOBase, trace_codes=None):
+        trace_codes_map = default_trace_codes() if trace_codes is None else trace_codes
         return map(lambda e: self._format_kevent(e, trace_codes_map, self.thread_map), self.kevents(kdebug))
 
-    def traces(self, kdebug):
-        traces_parser = TracesParser(default_trace_codes(), self.thread_map)
+    def traces(self, kdebug: io.IOBase, trace_codes=None):
+        trace_codes_map = default_trace_codes() if trace_codes is None else trace_codes
+        traces_parser = TracesParser(trace_codes_map, self.thread_map)
         return traces_parser.feed_generator(self.kevents(kdebug))
 
-    def formatted_traces(self, kdebug):
-        return map(lambda t: self._format_trace(t, self.thread_map), self.traces(kdebug))
+    def formatted_traces(self, kdebug: io.IOBase, trace_codes=None):
+        return map(lambda t: self._format_trace(t, self.thread_map), self.traces(kdebug, trace_codes))
 
     def _format_timestamp(self, timestamp):
         if None in (self.mach_absolute_time, self.numer, self.denom, self.usecs_since_epoch, self.timezone):
