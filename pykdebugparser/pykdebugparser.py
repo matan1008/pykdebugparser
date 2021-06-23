@@ -49,9 +49,9 @@ class PyKdebugParser:
 
     def _format_timestamp(self, timestamp):
         if None in (self.mach_absolute_time, self.numer, self.denom, self.usecs_since_epoch, self.timezone):
-            return str(timestamp)
+            return str(timestamp) + ' '
         offset_usec = (
-                ((timestamp - self.mach_absolute_time) * self.numer) / self.denom
+                ((timestamp - self.mach_absolute_time) * self.numer) / (self.denom * 1000)
         )
         ts = datetime.fromtimestamp((self.usecs_since_epoch + offset_usec) / 1000000, tz=self.timezone)
         time_string = ts.strftime('%Y-%m-%d %H:%M:%S.%f')
