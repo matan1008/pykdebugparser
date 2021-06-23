@@ -9,6 +9,9 @@ Kevent = namedtuple('Kevent', ['timestamp', 'data', 'values', 'tid', 'debugid', 
 
 
 class DgbFuncQual(enum.Enum):
+    """
+    Event's role in the trace.
+    """
     DBG_FUNC_NONE = 0
     DBG_FUNC_START = 1
     DBG_FUNC_END = 2
@@ -17,9 +20,9 @@ class DgbFuncQual(enum.Enum):
 
 def from_kd_buf(kd_buf: bytes) -> Kevent:
     """
-    Create a Kevent object from a kd_buf struct.
-    :param kd_buf: Buffer of kd_buf struct.
-    :return: Kevent.
+    Create a Kevent object from a kd_buf kevent's struct.
+    :param kd_buf: Buffer of kd_buf kevent's struct.
+    :return: Parsed kevent.
     """
     timestamp, args_buf, tid, debugid, cpuid, unused = struct.unpack(KD_BUF_FORMAT, kd_buf)
     eventid = debugid & KDBG_EVENTID_MASK

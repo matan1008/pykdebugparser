@@ -1,5 +1,6 @@
 import struct
 from collections import namedtuple
+import io
 import plistlib
 
 from construct import Adapter, Struct, Const, Padding, Int32ul, Int64ul, Array, GreedyRange, Byte, FixedSized, \
@@ -27,16 +28,15 @@ kd_threadmap = Struct(
 
 
 class BplistAdapter(Adapter):
+    """
+    Construct adapter ti build and parse plists.
+    """
+
     def _decode(self, obj, context, path):
         return plistlib.loads(obj)
 
     def _encode(self, obj, context, path):
         return plistlib.dumps(obj)
-
-
-class KdBufAdapter(Adapter):
-    def _decode(self, obj, context, path):
-        return from_kd_buf(obj)
 
 
 kd_header_v2 = Struct(
@@ -72,13 +72,23 @@ kd_v3_threadmap = Struct(
 )
 
 
-def seek_until(reader, data):
+def seek_until(reader, data: bytes):
+    """
+    Read from a stream until matching data.
+    Reading is aligned to the data size.
+    :param reader: Stream to read from.
+    :param data: Data to match.
+    """
     while True:
         if reader.read(len(data)) == data:
             break
 
 
 class KdBufParser:
+    """
+    Parser for raw kd_buf buffer.
+    """
+
     def __init__(self, thread_map=None):
         self._thread_map = {} if thread_map is None else thread_map
         self.versions = {
@@ -91,12 +101,20 @@ class KdBufParser:
         self.kernel_binaries = {}
         self.v3_header = None
 
-    def parse(self, reader):
+    def parse(self, reader: io.IOBase):
+        """
+        Parse kevents from a stream.
+        :param reader: Stream to read from.
+        :return: Generator for parsed kevents.
+        """
         version = reader.read(RAW_VERSION_SIZE)
         return self.versions[version](reader)
 
     @property
     def thread_map(self):
+        """
+        Mapping between thread id to its process id and process name.
+        """
         return self._thread_map
 
     @thread_map.setter
@@ -105,7 +123,12 @@ class KdBufParser:
         for thread in parsed_threadmap:
             self._thread_map[thread.tid] = ProcessData(thread.pid, thread.process)
 
-    def parse_v2(self, reader):
+    def parse_v2(self, reader: io.IOBase):
+        """
+        Parse trace version 2.
+        :param reader: Stream to parse.
+        :return: Generator for parsed kevents.
+        """
         parsed_header = kd_header_v2.parse_stream(reader)
         self.thread_map = parsed_header.threadmap
         while True:
@@ -114,7 +137,12 @@ class KdBufParser:
                 break
             yield from_kd_buf(buf)
 
-    def parse_v3(self, reader):
+    def parse_v3(self, reader: io.IOBase):
+        """
+        Parse trace version 3.
+        :param reader: Stream to parse.
+        :return: Generator for parsed kevents.
+        """
         self.v3_header = Aligned(8, kd_header_v3).parse_stream(reader)
         # Align the reader to 8 bytes from the beginning of the stream
         reader.read(8 - RAW_VERSION_SIZE)
