@@ -678,7 +678,7 @@ class BscWorkqOpen:
     result: str
 
     def __str__(self):
-        rep = f'workq_open()'
+        rep = 'workq_open()'
         if self.result:
             rep += f', {self.result}'
         return rep
@@ -1140,7 +1140,7 @@ class BscVfsPurge:
     result: str
 
     def __str__(self):
-        rep = f'vfs_purge()'
+        rep = 'vfs_purge()'
         if self.result:
             rep += f', {self.result}'
         return rep
