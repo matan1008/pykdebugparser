@@ -12,14 +12,6 @@ Vnode = namedtuple('Vnode', ['ktraces', 'vnode_id', 'path'])
 
 
 @dataclass
-class MachStackHandoff:
-    ktraces: List
-
-    def __str__(self):
-        return 'stack_handoff()'
-
-
-@dataclass
 class TraceDataNewthread:
     ktraces: List
     tid: int
@@ -134,9 +126,6 @@ class TracesParser:
 
     def parse_vnodes(self, events):
         return list(self.vnode_generator([e for e in events if self.trace_codes.get(e.eventid) == 'VFS_LOOKUP']))
-
-    def handle_mach_stkhandoff(self, events):
-        return MachStackHandoff(events)
 
     def handle_trace_data_newthread(self, events):
         result = events[0].values
