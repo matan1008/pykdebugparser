@@ -7,6 +7,7 @@ from pykdebugparser.kd_buf_parser import ProcessData
 from pykdebugparser.trace_handlers.bsd import handlers as bsd_handlers
 from pykdebugparser.trace_handlers.fsystem import handlers as fsystem_handlers
 from pykdebugparser.trace_handlers.mach import handlers as mach_handlers
+from pykdebugparser.trace_handlers.perf import handlers as perf_handlers
 
 Vnode = namedtuple('Vnode', ['ktraces', 'vnode_id', 'path'])
 
@@ -75,6 +76,7 @@ class TracesParser:
         self.handlers.update(bsd_handlers)
         self.handlers.update(fsystem_handlers)
         self.handlers.update(mach_handlers)
+        self.handlers.update(perf_handlers)
 
     def feed(self, event):
         if event.eventid in self.trace_codes:
