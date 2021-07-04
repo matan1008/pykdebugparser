@@ -2,12 +2,10 @@
 [![Pypi version](https://img.shields.io/pypi/v/pykdebugparser.svg)](https://pypi.org/project/pykdebugparser/ "PyPi package")
 [![Language grade: Python](https://img.shields.io/lgtm/grade/python/g/matan1008/pykdebugparser.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/matan1008/pykdebugparser/context:python)
 
-
 - [Description](#description)
 - [Installation](#installation)
 - [Usage](#usage)
-  * [Example](#example)
-
+    * [Example](#example)
 
 # Description
 
@@ -37,7 +35,7 @@ python3 -m pip install --user -U -e .
 You can either use the CLI:
 
 ```
-Usage: pykdebugparser [OPTIONS] KDEBUG_DUMP
+Usage: pykdebugparser traces [OPTIONS] KDEBUG_DUMP
 
 Options:
   -c, --count INTEGER         Number of events to print. Omit to endless
@@ -60,7 +58,23 @@ with open('kdebug.bin', 'rb') as fd:
         print(trace)
 ```
 
+You can also request callstacks instead of traces:
+
+```
+Usage: pykdebugparser callstacks [OPTIONS] KDEBUG_DUMP
+
+Options:
+  -c, --count INTEGER         Number of events to print. Omit to endless
+                              sniff.
+  --tid INTEGER               Thread ID to filter. Omit for all.
+  --help                      Show this message and exit.
+```
+
 ## Example
 
-In order to produce an input file, you can use `ktrace dump`, you can see an example [here](https://terminalizer.com/view/8514aef95032)
+In order to produce an input file, you can use `ktrace dump`:
 
+![](gifs/usage_with_ktrace.gif)
+
+
+More examples can be found under the [gifs folder](gifs/).
