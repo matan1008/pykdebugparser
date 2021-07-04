@@ -201,15 +201,17 @@ class MachVmfault:
     addr: int
     is_kernel: bool
     result: int
-    fault_type: DbgVmFaultType
-    pid: int
-    caller_prot: List
+    fault_type: DbgVmFaultType = None
+    pid: int = None
+    caller_prot: List = None
 
     def __str__(self):
         ret = f'MachVmfault, addr: {hex(self.addr)}, is_kernel: {self.is_kernel}, result: {self.result}'
         if self.result == 0:
-            prot = ' | '.join(map(lambda p: p.name, self.caller_prot))
-            ret += f', type: {self.fault_type.name}, vm_prot: {prot}, pid: {self.pid}'
+            ret += f', type: {self.fault_type.name}'
+            if self.pid is not None and self.caller_prot is not None:
+                prot = ' | '.join(map(lambda p: p.name, self.caller_prot))
+                ret += f', vm_prot: {prot}, pid: {self.pid}'
         return ret
 
 
@@ -410,9 +412,18 @@ def handle_mach_vmfault(parser, events):
     args = events[0].values
     is_kernel = bool(args[2])
     rets = events[-1].values
-    fault_type = DbgVmFaultType(rets[3])
-    vm_fault_real = parser.parse_event_list([e for e in events[1:-1] if 0x1320008 <= e.eventid <= 0x1320014])
-    return MachVmfault(events, args[1], is_kernel, rets[2], fault_type, vm_fault_real.pid, vm_fault_real.caller_prot)
+    result = rets[2]
+    fault_type = None
+    pid = None
+    caller_prot = None
+    if result == 0:
+        fault_type = DbgVmFaultType(rets[3])
+        real_events = [e for e in events[1:-1] if 0x1320008 <= e.eventid <= 0x1320014]
+        if real_events:
+            vm_fault_real = parser.parse_event_list(real_events)
+            pid = vm_fault_real.pid
+            caller_prot = vm_fault_real.caller_prot
+    return MachVmfault(events, args[1], is_kernel, result, fault_type, pid, caller_prot)
 
 
 def handle_real_fault_address(addr_type, parser, events):

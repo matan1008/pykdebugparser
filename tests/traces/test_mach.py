@@ -107,6 +107,29 @@ def test_mach_vmfault(traces_parser):
     assert fault.caller_prot == [VmProtection.VM_PROT_READ, VmProtection.VM_PROT_WRITE]
 
 
+def test_mach_vmfault_no_real_address(traces_parser):
+    events = [
+        Kevent(timestamp=10533581994269,
+               data=(b'\x01\x00\x00\x00\x00\x00\x00\x00\x00\xc0\x99k\x01\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(1, 6100205568, 0, 0), tid=876421, debugid=19922953, eventid=19922952, func_qualifier=1),
+        Kevent(timestamp=10533581994616,
+               data=(b'\x01\x00\x00\x00\x00\x00\x00\x00\x00\xc0\x99k\x01\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00'),
+               values=(1, 6100205568, 0, 1), tid=876421, debugid=19922954, eventid=19922952,
+               func_qualifier=2)
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert len(ret) == 1
+    fault = ret[0]
+    assert fault.addr == 0x16b99c000
+    assert not fault.is_kernel
+    assert fault.result == 0
+    assert fault.fault_type == DbgVmFaultType.DBG_ZERO_FILL_FAULT
+    assert fault.pid is None
+    assert fault.caller_prot is None
+
+
 def test_mach_sched(traces_parser):
     events = [
         Kevent(timestamp=4580000449861,
