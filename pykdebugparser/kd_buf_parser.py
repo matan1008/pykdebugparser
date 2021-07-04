@@ -10,7 +10,7 @@ from pykdebugparser.kevent import from_kd_buf, KD_BUF_FORMAT
 
 KEVENT_SIZE = struct.calcsize(KD_BUF_FORMAT)
 
-ProcessData = namedtuple('namedtuple', ['pid', 'name'])
+ProcessData = namedtuple('ProcessData', ['pid', 'name'])
 
 RAW_VERSION_SIZE = 4
 RAW_VERSION2_BYTES = b'\x00\x02\xaa\x55'
