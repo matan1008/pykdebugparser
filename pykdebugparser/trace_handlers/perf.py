@@ -145,7 +145,6 @@ def handle_event(parser, events):
 
 def handle_thd_data(parser, events):
     args = events[0].values
-    print(events)
     return PerfThdData(events, args[0], args[1], args[2], to_kperf_ti_state(args[3] & 0xffff))
 
 
