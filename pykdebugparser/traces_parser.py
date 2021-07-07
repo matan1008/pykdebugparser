@@ -2,6 +2,7 @@ from collections import namedtuple
 
 from pykdebugparser.kevent import DgbFuncQual
 from pykdebugparser.trace_handlers.bsd import handlers as bsd_handlers
+from pykdebugparser.trace_handlers.dyld import handlers as dyld_handlers
 from pykdebugparser.trace_handlers.fsystem import handlers as fsystem_handlers
 from pykdebugparser.trace_handlers.mach import handlers as mach_handlers
 from pykdebugparser.trace_handlers.perf import handlers as perf_handlers
@@ -27,6 +28,7 @@ class TracesParser:
         self.last_data_exec = None
         self.handlers = {}
         self.handlers.update(bsd_handlers)
+        self.handlers.update(dyld_handlers)
         self.handlers.update(fsystem_handlers)
         self.handlers.update(mach_handlers)
         self.handlers.update(perf_handlers)
