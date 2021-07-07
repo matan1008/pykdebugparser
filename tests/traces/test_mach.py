@@ -1,6 +1,6 @@
 from pykdebugparser.kevent import Kevent
-from pykdebugparser.trace_handlers.mach import AsynchronousSystemTrapsReason, ThreadState, ProcessState, DbgVmFaultType, \
-    VmProtection
+from pykdebugparser.trace_handlers.mach import AsynchronousSystemTrapsReason, ThreadState, ProcessState, \
+    DbgVmFaultType, VmProtection
 
 
 def test_kernel_data_abort_same_el_exc_arm(traces_parser):
