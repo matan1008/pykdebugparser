@@ -36,7 +36,7 @@ class PyKdebugParser:
     def kevents(self, kdebug: io.IOBase):
         events_generator = KdBufParser(thread_map=self.thread_map).parse(kdebug)
         if self.filter_tid is not None:
-            events_generator = filter(lambda e: e.tid != self.filter_tid, events_generator)
+            events_generator = filter(lambda e: e.tid == self.filter_tid, events_generator)
         return events_generator
 
     def formatted_kevents(self, kdebug: io.IOBase, trace_codes=None):
