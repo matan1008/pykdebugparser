@@ -65,6 +65,7 @@ class DyldUuidSharedCacheB:
 class DyldLaunchExecutable:
     ktraces: List
     main_executable_mh: int
+    uuid_map_a: List
 
     def __str__(self):
         return f'DBG_DYLD_TIMING_LAUNCH_EXECUTABLE, main_executable_mh: {hex(self.main_executable_mh)}'
@@ -161,7 +162,11 @@ def handle_uuid_shared_cache_b(parser, events):
 
 
 def handle_timing_launch_executable(parser, events):
-    return DyldLaunchExecutable(events, events[0].values[1])
+    map_a = [handle_uuid_map_a(parser, [e]) for e in events if parser.trace_codes.get(e.eventid) == 'DYLD_uuid_map_a']
+    map_a += [handle_uuid_shared_cache_a(parser, [e]) for e in events if
+              parser.trace_codes.get(e.eventid) == 'DYLD_uuid_shared_cache_a']
+    map_a = sorted(map_a, key=lambda x: x.load_addr)
+    return DyldLaunchExecutable(events, events[0].values[1], map_a)
 
 
 def handle_timing_func_for_add_image(parser, events):

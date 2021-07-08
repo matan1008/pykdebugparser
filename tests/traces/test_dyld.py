@@ -67,6 +67,11 @@ def test_timing_launch_executable(traces_parser):
                data=(b'\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x97\x00\x01\x00\x00\x00\x00\x00\x00'
                      b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
                values=(1, 4304863232, 0, 0), tid=227140, debugid=520552453, eventid=520552452, func_qualifier=1),
+        Kevent(timestamp=2087564153638,
+               data=(b'\x19\xdd*\xd4E\xe01\x97\xa5\xc4S\xb3W\xf3a\xa0\x000u\xaa\x01'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(10894735564102884633, 11556785676805719205, 7154774016, 0), tid=227140, debugid=520421376,
+               eventid=520421376, func_qualifier=0),
         Kevent(timestamp=2375524298242,
                data=(b'\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
                      b'\x00\x00\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00'),
@@ -75,6 +80,8 @@ def test_timing_launch_executable(traces_parser):
     ret = list(traces_parser.feed_generator(events))
     assert len(ret) == 1
     assert ret[0].main_executable_mh == 0x100970000
+    assert ret[0].uuid_map_a[0].uuid == UUID('19dd2ad4-45e0-3197-a5c4-53b357f361a0')
+    assert ret[0].uuid_map_a[0].load_addr == 0x1aa753000
 
 
 def test_timing_func_for_add_image(traces_parser):
