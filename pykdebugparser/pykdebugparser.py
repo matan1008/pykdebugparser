@@ -1,19 +1,16 @@
-from collections import namedtuple
 from datetime import datetime
 import io
 
 from pygments import highlight, lexers, formatters
 
+from pykdebugparser.callstacks_parser import CallstacksParser
 from pykdebugparser.kd_buf_parser import KdBufParser, ProcessData
 from pykdebugparser.kevent import DgbFuncQual
 from pykdebugparser.trace_codes import default_trace_codes
-from pykdebugparser.trace_handlers.perf import PerfEvent
 from pykdebugparser.traces_parser import TracesParser
 
 c_lexer = lexers.CLexer()
 color_formatter = formatters.TerminalTrueColorFormatter(style='stata-dark')
-
-Callstack = namedtuple('Callstack', ['timestamp', 'tid', 'frames'])
 
 
 class PyKdebugParser:
@@ -32,6 +29,8 @@ class PyKdebugParser:
         self.usecs_since_epoch = None
         self.timezone = None
         self.thread_map = {}
+        self.dyld_addresses = []
+        self.dyld_uuids = []
 
     def kevents(self, kdebug: io.IOBase):
         events_generator = KdBufParser(thread_map=self.thread_map).parse(kdebug)
@@ -52,9 +51,8 @@ class PyKdebugParser:
         return map(lambda t: self._format_trace(t, self.thread_map), self.traces(kdebug, trace_codes))
 
     def callstacks(self, kdebug: io.IOBase, trace_codes=None):
-        for trace in filter(lambda t: isinstance(t, PerfEvent) and t.cs_frames is not None,
-                            self.traces(kdebug, trace_codes)):
-            yield Callstack(trace.ktraces[0].timestamp, trace.ktraces[0].tid, trace.cs_frames)
+        callstacks_parser = CallstacksParser(self.dyld_addresses, self.dyld_uuids)
+        return callstacks_parser.feed_generator(self.traces(kdebug, trace_codes))
 
     def formatted_callstacks(self, kdebug: io.IOBase, trace_codes=None):
         return map(lambda t: self._format_callstack(t, self.thread_map), self.callstacks(kdebug, trace_codes))
@@ -118,7 +116,7 @@ class PyKdebugParser:
 
         return formatted_data + event_rep
 
-    def _format_callstack(self, callstack: Callstack, thread_map):
+    def _format_callstack(self, callstack, thread_map):
         tid = callstack.tid
         try:
             process = thread_map[tid]
@@ -135,5 +133,6 @@ class PyKdebugParser:
         formatted_data += f'{process_rep:<34}'
         ret = [formatted_data]
         for i, frame in enumerate(callstack.frames):
-            ret.append((' ' * i) + f'0x{frame:016x}')
+            line = f'{frame.uuid}:0x{frame.offset:016x}' if frame.uuid is not None else f'0x{frame.address:016x}'
+            ret.append((' ' * i) + line)
         return '\n'.join(ret)
