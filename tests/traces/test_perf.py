@@ -44,6 +44,26 @@ def test_perf_event(traces_parser):
     assert ret[0].cs_frames == [0x1b5c05bf0, 0x19376e4d4, 0x1025c9930, 0x1d1160b3c, 0x19376e6d4]
 
 
+def test_perf_event_without_stack(traces_parser):
+    events = [
+        Kevent(timestamp=7006023115068,
+               data=(b'\t\x00\x00\x00\x00\x00\x00\x00 \x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(9, 32, 0, 0), tid=1957, debugid=620756993, eventid=620756992, func_qualifier=1),
+        Kevent(timestamp=7006023115153,
+               data=(b'\t\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(9, 0, 0, 0), tid=1957, debugid=620756994, eventid=620756992, func_qualifier=2)
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert len(ret) == 1
+    assert ret[0].sample_what == [SamplerAction.SAMPLER_TH_INFO, SamplerAction.SAMPLER_USTACK]
+    assert ret[0].actionid == 32
+    assert ret[0].th_info is None
+    assert ret[0].cs_flags is None
+    assert ret[0].cs_frames is None
+
+
 def test_thd_data(traces_parser):
     events = [
         Kevent(timestamp=15773877915,
