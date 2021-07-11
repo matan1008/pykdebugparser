@@ -1,8 +1,9 @@
-from setuptools import setup, find_packages
 import os
 
+from setuptools import setup, find_packages
+
 BASE_DIR = os.path.realpath(os.path.dirname(__file__))
-VERSION = '1.1.0'
+VERSION = '1.1.1'
 
 
 def parse_requirements():
@@ -30,13 +31,12 @@ if __name__ == '__main__':
         long_description_content_type='text/markdown',
         cmdclass={},
         packages=find_packages(),
-        package_data={'': ['*.txt', '*.TXT'], },
+        package_data={'': ['*.txt', '*.TXT', '*.codes']},
         data_files=[('.', ['requirements.txt'])],
         author='Matan Perelman',
         install_requires=parse_requirements(),
         entry_points={
-            'console_scripts': ['pykdebugparser=pykdebugparser.__main__:cli',
-                                ],
+            'console_scripts': ['pykdebugparser=pykdebugparser.__main__:cli'],
         },
         classifiers=[
             'Programming Language :: Python :: 3.7',
