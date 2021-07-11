@@ -12,12 +12,13 @@ Vnode = namedtuple('Vnode', ['ktraces', 'vnode_id', 'path'])
 
 
 class TracesParser:
-    def __init__(self, trace_codes_map, thread_map):
+    def __init__(self, trace_codes_map, threads_pids, pids_names):
         self.trace_codes = trace_codes_map
         self.on_going_events = {}
         self.on_going_traces = {}
         self.global_strings = {}
-        self.thread_map = thread_map
+        self.threads_pids = threads_pids
+        self.pids_names = pids_names
         self.qualifiers_actions = {
             DgbFuncQual.DBG_FUNC_START.value: self._feed_start_event,
             DgbFuncQual.DBG_FUNC_END.value: self._feed_end_event,

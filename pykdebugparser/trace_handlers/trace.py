@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import List
 
-from pykdebugparser.kd_buf_parser import ProcessData
 from pykdebugparser.kevent import DgbFuncQual
 
 
@@ -60,6 +59,7 @@ class TraceStringExec:
 def handle_trace_data_newthread(parser, events):
     result = events[0].values
     parser.last_data_newthread = TraceDataNewthread(events, result[0], result[1], result[2], result[3])
+    parser.threads_pids[parser.last_data_newthread.tid] = parser.last_data_newthread.pid
     return parser.last_data_newthread
 
 
@@ -91,15 +91,15 @@ def handle_trace_string_global(parser, events):
     return event
 
 
-def handle_trace_string_newthread(self, events):
+def handle_trace_string_newthread(parser, events):
     event = TraceStringNewthread(events, events[0].data.replace(b'\x00', b'').decode())
-    self.thread_map[self.last_data_newthread.tid] = ProcessData(self.last_data_newthread.pid, event.name)
+    parser.pids_names[parser.last_data_newthread.pid] = event.name
     return event
 
 
-def handle_trace_string_exec(self, events):
+def handle_trace_string_exec(parser, events):
     event = TraceStringExec(events, events[0].data.replace(b'\x00', b'').decode())
-    self.thread_map[events[0].tid] = ProcessData(self.last_data_exec.pid, event.name)
+    parser.pids_names[parser.last_data_exec.pid] = event.name
     return event
 
 

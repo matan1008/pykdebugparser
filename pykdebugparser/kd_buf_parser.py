@@ -89,8 +89,9 @@ class KdBufParser:
     Parser for raw kd_buf buffer.
     """
 
-    def __init__(self, thread_map=None):
-        self._thread_map = {} if thread_map is None else thread_map
+    def __init__(self, threads_pids=None, pids_names=None):
+        self.threads_pids = {} if threads_pids is None else threads_pids
+        self.pids_names = {} if pids_names is None else pids_names
         self.versions = {
             RAW_VERSION2_BYTES: self.parse_v2,
             RAW_VERSION3_BYTES: self.parse_v3,
@@ -110,18 +111,12 @@ class KdBufParser:
         version = reader.read(RAW_VERSION_SIZE)
         return self.versions[version](reader)
 
-    @property
-    def thread_map(self):
-        """
-        Mapping between thread id to its process id and process name.
-        """
-        return self._thread_map
-
-    @thread_map.setter
-    def thread_map(self, parsed_threadmap):
-        self._thread_map.clear()
+    def set_thread_map(self, parsed_threadmap):
+        self.threads_pids.clear()
+        self.pids_names.clear()
         for thread in parsed_threadmap:
-            self._thread_map[thread.tid] = ProcessData(thread.pid, thread.process)
+            self.threads_pids[thread.tid] = thread.pid
+            self.pids_names[thread.pid] = thread.process
 
     def parse_v2(self, reader: io.IOBase):
         """
@@ -130,7 +125,7 @@ class KdBufParser:
         :return: Generator for parsed kevents.
         """
         parsed_header = kd_header_v2.parse_stream(reader)
-        self.thread_map = parsed_header.threadmap
+        self.set_thread_map(parsed_header.threadmap)
         while True:
             buf = reader.read(KEVENT_SIZE)
             if not buf:
@@ -150,7 +145,7 @@ class KdBufParser:
         seek_until(reader, TRACEV3_STACKSHOT_END)
         seek_until(reader, TRACEV3_THREADMAP_TAG)
         threadmap = kd_v3_threadmap.parse_stream(reader).threadmap
-        self.thread_map = threadmap
+        self.set_thread_map(threadmap)
 
         while True:
             seek_until(reader, TRACEV3_EVENTS_TAG)
