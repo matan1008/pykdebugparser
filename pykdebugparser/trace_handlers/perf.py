@@ -145,7 +145,10 @@ def handle_event(parser, events):
 
 def handle_thd_data(parser, events):
     args = events[0].values
-    return PerfThdData(events, args[0], args[1], args[2], to_kperf_ti_state(args[3] & 0xffff))
+    pid = args[0]
+    tid = args[1]
+    parser.threads_pids[tid] = pid
+    return PerfThdData(events, pid, tid, args[2], to_kperf_ti_state(args[3] & 0xffff))
 
 
 def handle_thd_cswitch(parser, events):

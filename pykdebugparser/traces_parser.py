@@ -12,12 +12,13 @@ Vnode = namedtuple('Vnode', ['ktraces', 'vnode_id', 'path'])
 
 
 class TracesParser:
-    def __init__(self, trace_codes_map, thread_map):
+    def __init__(self, trace_codes_map, threads_pids, pids_names):
         self.trace_codes = trace_codes_map
         self.on_going_events = {}
         self.on_going_traces = {}
         self.global_strings = {}
-        self.thread_map = thread_map
+        self.threads_pids = threads_pids
+        self.pids_names = pids_names
         self.qualifiers_actions = {
             DgbFuncQual.DBG_FUNC_START.value: self._feed_start_event,
             DgbFuncQual.DBG_FUNC_END.value: self._feed_end_event,
@@ -33,8 +34,12 @@ class TracesParser:
         self.handlers.update(mach_handlers)
         self.handlers.update(perf_handlers)
         self.handlers.update(trace_handlers)
+        # Event ids that mess up the flow.
+        self.blacklisted = (0x1030454, 0x2b3100d0, 0x2b3100e8, 0x2b3100d4, 0x2b3100b8)
 
     def feed(self, event):
+        if event.eventid in self.blacklisted:
+            return
         if event.eventid in self.trace_codes:
             trace_name = self.trace_codes[event.eventid]
             if trace_name in trace_handlers:

@@ -1,24 +1,22 @@
-from collections import namedtuple
 from datetime import datetime
 import io
 
 from pygments import highlight, lexers, formatters
 
-from pykdebugparser.kd_buf_parser import KdBufParser, ProcessData
+from pykdebugparser.callstacks_parser import CallstacksParser
+from pykdebugparser.kd_buf_parser import KdBufParser
 from pykdebugparser.kevent import DgbFuncQual
 from pykdebugparser.trace_codes import default_trace_codes
-from pykdebugparser.trace_handlers.perf import PerfEvent
 from pykdebugparser.traces_parser import TracesParser
 
 c_lexer = lexers.CLexer()
 color_formatter = formatters.TerminalTrueColorFormatter(style='stata-dark')
 
-Callstack = namedtuple('Callstack', ['timestamp', 'tid', 'frames'])
-
 
 class PyKdebugParser:
     def __init__(self):
         self.filter_tid = None
+        self.filter_process = None
         self.show_timestamp = True
         self.show_name = True
         self.show_func_qual = True
@@ -31,33 +29,44 @@ class PyKdebugParser:
         self.mach_absolute_time = None
         self.usecs_since_epoch = None
         self.timezone = None
-        self.thread_map = {}
+        self.threads_pids = {}
+        self.pids_names = {}
+        self.dyld_addresses = []
+        self.dyld_uuids = []
 
     def kevents(self, kdebug: io.IOBase):
-        events_generator = KdBufParser(thread_map=self.thread_map).parse(kdebug)
+        events_generator = KdBufParser(self.threads_pids, self.pids_names).parse(kdebug)
         if self.filter_tid is not None:
             events_generator = filter(lambda e: e.tid == self.filter_tid, events_generator)
         return events_generator
 
     def formatted_kevents(self, kdebug: io.IOBase, trace_codes=None):
         trace_codes_map = default_trace_codes() if trace_codes is None else trace_codes
-        return map(lambda e: self._format_kevent(e, trace_codes_map, self.thread_map), self.kevents(kdebug))
+        return map(lambda e: self._format_kevent(e, trace_codes_map), self.kevents(kdebug))
 
     def traces(self, kdebug: io.IOBase, trace_codes=None):
         trace_codes_map = default_trace_codes() if trace_codes is None else trace_codes
-        traces_parser = TracesParser(trace_codes_map, self.thread_map)
-        return traces_parser.feed_generator(self.kevents(kdebug))
+        traces_parser = TracesParser(trace_codes_map, self.threads_pids, self.pids_names)
+        trace_generator = traces_parser.feed_generator(self.kevents(kdebug))
+        if self.filter_process is not None:
+            trace_generator = filter(self._filter_process_callback, trace_generator)
+        return trace_generator
 
     def formatted_traces(self, kdebug: io.IOBase, trace_codes=None):
-        return map(lambda t: self._format_trace(t, self.thread_map), self.traces(kdebug, trace_codes))
+        return map(lambda t: self._format_trace(t), self.traces(kdebug, trace_codes))
 
     def callstacks(self, kdebug: io.IOBase, trace_codes=None):
-        for trace in filter(lambda t: isinstance(t, PerfEvent) and t.cs_frames is not None,
-                            self.traces(kdebug, trace_codes)):
-            yield Callstack(trace.ktraces[0].timestamp, trace.ktraces[0].tid, trace.cs_frames)
+        callstacks_parser = CallstacksParser(self.dyld_addresses, self.dyld_uuids)
+        return callstacks_parser.feed_generator(self.traces(kdebug, trace_codes))
 
     def formatted_callstacks(self, kdebug: io.IOBase, trace_codes=None):
-        return map(lambda t: self._format_callstack(t, self.thread_map), self.callstacks(kdebug, trace_codes))
+        return map(lambda t: self._format_callstack(t), self.callstacks(kdebug, trace_codes))
+
+    def _filter_process_callback(self, trace):
+        tid = trace.ktraces[0].tid
+        pid = self.threads_pids.get(tid, -1)
+        process_name = self.pids_names.get(pid, '')
+        return self.filter_process == str(pid) or self.filter_process == process_name
 
     def _format_timestamp(self, timestamp):
         if None in (self.mach_absolute_time, self.numer, self.denom, self.usecs_since_epoch, self.timezone):
@@ -69,16 +78,18 @@ class PyKdebugParser:
         time_string = ts.strftime('%Y-%m-%d %H:%M:%S.%f')
         return f'{time_string:<27}'
 
-    def _format_kevent(self, event, trace_codes_map, thread_map):
+    def _format_process(self, tid):
+        pid = self.threads_pids.get(tid, -1)
+        process_name = self.pids_names.get(pid, '')
+        return f'{process_name}({pid})' if pid != -1 else f'Error: tid {tid}'
+
+    def _format_kevent(self, event, trace_codes_map):
+        tid = event.tid
         if event.eventid in trace_codes_map:
             name = trace_codes_map[event.eventid] + f' ({hex(event.eventid)})'
         else:
             # Some event IDs are not public.
             name = hex(event.eventid)
-        try:
-            process = thread_map[event.tid]
-        except KeyError:
-            process = ProcessData(pid=-1, name='')
         formatted_data = ''
         if self.show_timestamp:
             formatted_data += self._format_timestamp(event.timestamp)
@@ -88,52 +99,36 @@ class PyKdebugParser:
                 formatted_data += f'{DgbFuncQual(event.func_qualifier).name:<15}'
             except ValueError:
                 formatted_data += f'''{'Error':<16}'''
-        formatted_data += f'{hex(event.tid):<12}' if self.show_tid else ''
+        formatted_data += f'{hex(tid):<12}' if self.show_tid else ''
         if self.show_process:
-            process_rep = (f'{process.name}({process.pid})'
-                           if process.pid != -1
-                           else f'Error: tid {event.tid}')
-            formatted_data += f'{process_rep:<27}'
+            formatted_data += f'{self._format_process(tid):<27}'
         formatted_data += f'{str(event.data):<34}' if self.show_args else ''
         return formatted_data
 
-    def _format_trace(self, trace, thread_map):
+    def _format_trace(self, trace):
         tid = trace.ktraces[0].tid
-        try:
-            process = thread_map[tid]
-        except KeyError:
-            process = ProcessData(pid=-1, name='')
-
         formatted_data = ''
         if self.show_timestamp:
             formatted_data += self._format_timestamp(trace.ktraces[0].timestamp)
         formatted_data += f'{tid:>11} ' if self.show_tid else ''
-        process_rep = (f'{process.name}({process.pid})'
-                       if process.pid != -1
-                       else f'Error: tid {tid}')
-        formatted_data += f'{process_rep:<34}'
+        if self.show_process:
+            formatted_data += f'{self._format_process(tid):<34}'
         event_rep = str(trace)
         if self.color:
             event_rep = highlight(event_rep, c_lexer, color_formatter).strip()
 
         return formatted_data + event_rep
 
-    def _format_callstack(self, callstack: Callstack, thread_map):
+    def _format_callstack(self, callstack):
         tid = callstack.tid
-        try:
-            process = thread_map[tid]
-        except KeyError:
-            process = ProcessData(pid=-1, name='')
-
         formatted_data = ''
         if self.show_timestamp:
             formatted_data += self._format_timestamp(callstack.timestamp)
         formatted_data += f'{tid:>11} ' if self.show_tid else ''
-        process_rep = (f'{process.name}({process.pid})'
-                       if process.pid != -1
-                       else f'Error: tid {tid}')
-        formatted_data += f'{process_rep:<34}'
+        if self.show_process:
+            formatted_data += f'{self._format_process(tid):<34}'
         ret = [formatted_data]
         for i, frame in enumerate(callstack.frames):
-            ret.append((' ' * i) + f'0x{frame:016x}')
+            line = f'{frame.uuid}:0x{frame.offset:016x}' if frame.uuid is not None else f'0x{frame.address:016x}'
+            ret.append((' ' * i) + line)
         return '\n'.join(ret)
