@@ -302,6 +302,7 @@ class CsopsOps(enum.Enum):
     CS_OPS_CLEARPLATFORM = 13
     CS_OPS_TEAMID = 14
     CS_OPS_CLEAR_LV = 15
+    CS_OPS_16 = 16
 
 
 class ProcInfoCall(enum.Enum):
