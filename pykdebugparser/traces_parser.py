@@ -19,6 +19,7 @@ class TracesParser:
         self.global_strings = {}
         self.threads_pids = threads_pids
         self.pids_names = pids_names
+        self.tids_names = {}
         self.qualifiers_actions = {
             DgbFuncQual.DBG_FUNC_START.value: self._feed_start_event,
             DgbFuncQual.DBG_FUNC_END.value: self._feed_end_event,
@@ -35,7 +36,7 @@ class TracesParser:
         self.handlers.update(perf_handlers)
         self.handlers.update(trace_handlers)
         # Event ids that mess up the flow.
-        self.blacklisted = (0x1030454, 0x2b3100d0, 0x2b3100e8, 0x2b3100d4, 0x2b3100b8)
+        self.blacklisted = (0x1030454, 0x2b3100d0, 0x2b3100e8, 0x2b3100d4, 0x2b3100b8, 0x40c05a4)
 
     def feed(self, event):
         if event.eventid in self.blacklisted:

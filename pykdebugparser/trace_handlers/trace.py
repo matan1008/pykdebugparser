@@ -28,6 +28,30 @@ class TraceDataExec:
 
 
 @dataclass
+class TraceDataThreadTerminate:
+    ktraces: List
+    tid: int
+    pid: int
+    name: str = ''
+
+    def __str__(self):
+        rep = f'Thread terminated tid: {self.tid}, pid: {self.pid}'
+        if self.name:
+            rep += f', name: {self.name}'
+        return rep
+
+
+@dataclass
+class TraceDataThreadTerminatePid:
+    ktraces: List
+    pid: int
+    uniqueid: int
+
+    def __str__(self):
+        return f'Thread terminated thread pid: {self.pid}, unique id {self.uniqueid}'
+
+
+@dataclass
 class TraceStringGlobal:
     ktraces: List
     debugid: int
@@ -56,6 +80,33 @@ class TraceStringExec:
         return f'New process name: {self.name}'
 
 
+@dataclass
+class TraceStringProcExit:
+    ktraces: List
+    name: List
+
+    def __str__(self):
+        return f'Process exit name: {self.name}'
+
+
+@dataclass
+class TraceStringThreadname:
+    ktraces: List
+    name: List
+
+    def __str__(self):
+        return f'New thread name: {self.name}'
+
+
+@dataclass
+class TraceStringThreadnamePrev:
+    ktraces: List
+    name: List
+
+    def __str__(self):
+        return f'Thread terminated name: {self.name}'
+
+
 def handle_trace_data_newthread(parser, events):
     result = events[0].values
     parser.last_data_newthread = TraceDataNewthread(events, result[0], result[1], result[2], result[3])
@@ -67,6 +118,21 @@ def handle_trace_data_exec(parser, events):
     result = events[0].values
     parser.last_data_exec = TraceDataExec(events, result[0], result[1], result[2])
     return parser.last_data_exec
+
+
+def handle_trace_data_thread_terminate(parser, events):
+    print(events)
+    tid = events[0].values[0]
+    event = TraceDataThreadTerminate(events, tid, parser.threads_pids[tid])
+    event.name = parser.tids_names.get(tid, '')
+    return event
+
+
+def handle_trace_data_thread_terminate_pid(parser, events):
+    result = events[0].values
+    event = TraceDataThreadTerminatePid(events, result[0], result[1])
+    parser.threads_pids[events[0].tid] = event.pid
+    return event
 
 
 def handle_trace_string_global(parser, events):
@@ -103,10 +169,33 @@ def handle_trace_string_exec(parser, events):
     return event
 
 
+def handle_trace_string_proc_exit(parser, events):
+    return TraceStringProcExit(events, events[0].data.replace(b'\x00', b'').decode())
+
+
+def handle_trace_string_threadname(parser, events):
+    name = b''.join([e.data for e in events]).replace(b'\x00', b'').decode()
+    event = TraceStringThreadname(events, name)
+    parser.tids_names[events[0].tid] = event.name
+    return event
+
+
+def handle_trace_string_threadname_prev(parser, events):
+    name = b''.join([e.data for e in events]).replace(b'\x00', b'').decode()
+    event = TraceStringThreadnamePrev(events, name)
+    parser.tids_names[events[0].tid] = event.name
+    return event
+
+
 handlers = {
     'TRACE_DATA_NEWTHREAD': handle_trace_data_newthread,
     'TRACE_DATA_EXEC': handle_trace_data_exec,
+    'TRACE_DATA_THREAD_TERMINATE': handle_trace_data_thread_terminate,
+    'TRACE_DATA_THREAD_TERMINATE_PID': handle_trace_data_thread_terminate_pid,
     'TRACE_STRING_GLOBAL': handle_trace_string_global,
     'TRACE_STRING_NEWTHREAD': handle_trace_string_newthread,
     'TRACE_STRING_EXEC': handle_trace_string_exec,
+    'TRACE_STRING_PROC_EXIT': handle_trace_string_proc_exit,
+    'TRACE_STRING_THREADNAME': handle_trace_string_threadname,
+    'TRACE_STRING_THREADNAME_PREV': handle_trace_string_threadname_prev,
 }
