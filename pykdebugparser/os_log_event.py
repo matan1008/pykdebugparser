@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 import enum
+from typing import List, Dict
 
 from construct import Struct, Byte, Int32ul, BitStruct, Padding, Flag, BitsInteger, Int64ul
 
@@ -140,7 +141,7 @@ class OsLogEvent:
     boot_uuid: bytes
     process_image_uuid: bytes
     unix_date: datetime
-    unix_timezone: dict
+    unix_timezone: Dict
     process_image_path: str = ''
     process: str = ''
     sender_image_path: str = ''
@@ -155,7 +156,7 @@ class OsLogEvent:
     format_string: str = ''
     activity_identifier: int = 0
     parent_activity_identifier: int = 0
-    decomposed_message: dict = field(default_factory=dict)
+    decomposed_message: Dict = field(default_factory=dict)
     trace_identifier: TraceIdentifier = None
     creator_activity_identifier: int = 0
     creator_process_unique_identifier: int = 0
@@ -165,12 +166,12 @@ class OsLogEvent:
     signpost_scope: int = 0
     loss_start_mach_continuous_timestamp: int = 0
     loss_end_mach_continuous_timestamp: int = 0
-    loss_start_unix_date: dict = field(default_factory=dict)
-    loss_end_unix_date: dict = field(default_factory=dict)
-    loss_start_unix_timezone: dict = field(default_factory=dict)
-    loss_end_unix_timezone: dict = field(default_factory=dict)
-    loss_count: dict = field(default_factory=dict)
-    backtrace: list = field(default_factory=list)
+    loss_start_unix_date: Dict = field(default_factory=dict)
+    loss_end_unix_date: Dict = field(default_factory=dict)
+    loss_start_unix_timezone: Dict = field(default_factory=dict)
+    loss_end_unix_timezone: Dict = field(default_factory=dict)
+    loss_count: Dict = field(default_factory=dict)
+    backtrace: List = field(default_factory=list)
 
     @classmethod
     def from_raw_log_event(cls, event, log_strings):
