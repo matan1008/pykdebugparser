@@ -67,5 +67,19 @@ def callstacks(kdebug_dump, count, tid, process, show_tid):
     print_with_count(parser.formatted_callstacks(kdebug_dump), count)
 
 
+@cli.command()
+@dump_input
+@count
+@tid_filter
+@process_filter
+@show_tid
+def logs(kdebug_dump, count, tid, process, show_tid):
+    parser = PyKdebugParser()
+    parser.filter_tid = tid
+    parser.filter_process = process
+    parser.show_tid = show_tid
+    print_with_count(parser.formatted_logs(kdebug_dump), count)
+
+
 if __name__ == '__main__':
     cli()
