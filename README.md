@@ -170,6 +170,7 @@ Another useful feature is parsing os logs from tracev3 file:
 ```
 pykdebugparser logs trace002.ktrace
 ```
+
 Will result in:
 ```
 2021-10-21 10:07:18.222638  SpringBoard(65)    [CLSensorFusionService] q.x,<private>,q.y,<private>,q.z,<private>,q.w,<private>,userAccel.x,<private>,userAccel.y,<private>,userAccel.z,<private>,rotationRate.x,<private>,rotationRate.y,<private>,rotationRate.z,<private>,magneticField.x,<private>,magneticField.y,<private>,magneticField.z,<private>,heading,<private>,accuracy,<private>,level,-1,variant,2,mode,0,status,0x110,clientID,0,timestamp,429513.961651,now,429513.961954,latency,0.000303
