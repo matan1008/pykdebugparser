@@ -166,6 +166,37 @@ The output will be:
 ...
 ```
 
+Another useful feature is parsing os logs from tracev3 file:
+```
+pykdebugparser logs trace002.ktrace
+```
+
+Will result in:
+```
+2021-10-21 10:07:18.222638  SpringBoard(65)    [CLSensorFusionService] q.x,<private>,q.y,<private>,q.z,<private>,q.w,<private>,userAccel.x,<private>,userAccel.y,<private>,userAccel.z,<private>,rotationRate.x,<private>,rotationRate.y,<private>,rotationRate.z,<private>,magneticField.x,<private>,magneticField.y,<private>,magneticField.z,<private>,heading,<private>,accuracy,<private>,level,-1,variant,2,mode,0,status,0x110,clientID,0,timestamp,429513.961651,now,429513.961954,latency,0.000303
+2021-10-21 10:07:18.222783  kernel(0)          AppleCS35L27Amp::_enableDevice(inEnable=1) [WARNING] PLL is not locked to the selected reference clock. [Interrupt_Register3_Status=0x88888445]
+2021-10-21 10:07:18.222788  kernel(0)          AppleCS35L27Amp::_enableDevice(inEnable=1) [WARNING] PLL is not locked to the selected reference clock. [Interrupt_Register3_Status=0x88888445]
+2021-10-21 10:07:18.222796  kernel(0)          AppleCS35L27Amp::_updateSpeakerAmpState(inNewAmpState=3) END [mCurrentSpeakerState=3, result=0x0]
+2021-10-21 10:07:18.222803  kernel(0)          AppleCS35L27Amp::_updateSpeakerAmpState(inNewAmpState=3) START
+2021-10-21 10:07:18.222813  kernel(0)          AppleCS35L27Amp::_updateSpeakerAmpState(inNewAmpState=3) speaker is already in the requested state [mCurrentSpeakerState:3]
+2021-10-21 10:07:18.222815  kernel(0)          AppleCS35L27Amp::_updateSpeakerAmpState(inNewAmpState=3) END [mCurrentSpeakerState=3, result=0x0]
+2021-10-21 10:07:18.222828  kernel(0)          Speaker: streaming audio
+2021-10-21 10:07:18.222951  kernel(0)          _calibrateTimeOffsets: IODMAController000000B4::admac-sio::1832: Clock scaler = 1, Averaged offset = 48 MATU.
+2021-10-21 10:07:18.223094  tailspind(469)     Unable to reset existing ktrace: [16: Resource busy]
+2021-10-21 10:07:18.223096  tailspind(469)     Unable to enact kdbg state after ktrace bg notification!
+2021-10-21 10:07:18.223956  kernel(0)          - Speaker startTransport ret=success(0)
+2021-10-21 10:07:18.223969  kernel(0)          - Speaker::startIOEngineGated() ret=success(0)
+2021-10-21 10:07:18.224010  mediaserverd(38)    		HALS_IOEngine2::_StartIO(58) on Context 288  state: <private>
+2021-10-21 10:07:18.227648  SpringBoard(65)    [CLSensorFusionService] q.x,<private>,q.y,<private>,q.z,<private>,q.w,<private>,userAccel.x,<private>,userAccel.y,<private>,userAccel.z,<private>,rotationRate.x,<private>,rotationRate.y,<private>,rotationRate.z,<private>,magneticField.x,<private>,magneticField.y,<private>,magneticField.z,<private>,heading,<private>,accuracy,<private>,level,-1,variant,2,mode,0,status,0x110,clientID,0,timestamp,429513.966630,now,429513.966963,latency,0.000332
+2021-10-21 10:07:18.227951  com.apple.PerformanceTrace.PerformanceTraceService(2076) starting to trace live
+2021-10-21 10:07:18.228561  SpringBoard(65)    DisplayLinks Will Fire
+2021-10-21 10:07:18.228572  SpringBoard(65)    DisplayLinks Expected Wakeup Time: Proposed Model Time: 10308335227030, Commit Deadline Time: 10308335627030, Expected Wakeup Time: 0, Proposing Ready Time: 10308335227030. Returning: NO
+2021-10-21 10:07:18.228576  SpringBoard(65)    Dispatching Display Links. Model Time: 10308335227030 Commit Deadline: 10308335627030, Presentstion Time: 10308336027030
+2021-10-21 10:07:18.228767  backboardd(68)     ID is swap ID. __##__signpost.description#____#begin_time#_##_#16199036112369##__## frame_seed=0x9395 refresh_interval=399984 buffer_count=3 __##__signpost.description#____#end_time#_##_#16199037313424##__## prev_frame=16199036912791 skip_request=0
+2021-10-21 10:07:18.230319  mediaserverd(38)              AQMEIO_HAL.cpp:1703  aqmeio@0x1078f3a00, device 149 (VirtualAudioDevice_Default), AudioDeviceStart (err 0)
+2021-10-21 10:07:18.230673  mediaserverd(38)   Creating service facility connection with <private>
+```
+
 Note that each CLI command has some more options, filtering thread ids, limiting the output count and more.
 
 ## Python

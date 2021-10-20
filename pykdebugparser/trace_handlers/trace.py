@@ -65,7 +65,7 @@ class TraceStringGlobal:
 @dataclass
 class TraceStringNewthread:
     ktraces: List
-    name: List
+    name: str
 
     def __str__(self):
         return f'New thread of parent: {self.name}'
@@ -74,7 +74,7 @@ class TraceStringNewthread:
 @dataclass
 class TraceStringExec:
     ktraces: List
-    name: List
+    name: str
 
     def __str__(self):
         return f'New process name: {self.name}'
@@ -83,7 +83,7 @@ class TraceStringExec:
 @dataclass
 class TraceStringProcExit:
     ktraces: List
-    name: List
+    name: str
 
     def __str__(self):
         return f'Process exit name: {self.name}'
@@ -92,7 +92,7 @@ class TraceStringProcExit:
 @dataclass
 class TraceStringThreadname:
     ktraces: List
-    name: List
+    name: str
 
     def __str__(self):
         return f'New thread name: {self.name}'
@@ -101,7 +101,7 @@ class TraceStringThreadname:
 @dataclass
 class TraceStringThreadnamePrev:
     ktraces: List
-    name: List
+    name: str
 
     def __str__(self):
         return f'Thread terminated name: {self.name}'
@@ -121,7 +121,6 @@ def handle_trace_data_exec(parser, events):
 
 
 def handle_trace_data_thread_terminate(parser, events):
-    print(events)
     tid = events[0].values[0]
     event = TraceDataThreadTerminate(events, tid, parser.threads_pids[tid])
     event.name = parser.tids_names.get(tid, '')

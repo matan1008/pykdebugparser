@@ -132,15 +132,15 @@ def handle_event(parser, events):
     args = events[0].values
     e = PerfEvent(events, to_sampler_action(args[0]), args[1])
     if SamplerAction.SAMPLER_TH_INFO in e.sample_what:
-        sub_events = [ev for ev in events if parser.trace_codes[ev.eventid] == 'PERF_THD_Data']
+        sub_events = [ev for ev in events if parser.trace_codes.get(ev.eventid, '') == 'PERF_THD_Data']
         if sub_events:
             e.th_info = handle_thd_data(parser, sub_events)
     if SamplerAction.SAMPLER_USTACK in e.sample_what:
-        sub_events = [ev for ev in events if parser.trace_codes[ev.eventid] == 'PERF_STK_UHdr']
+        sub_events = [ev for ev in events if parser.trace_codes.get(ev.eventid, '') == 'PERF_STK_UHdr']
         if sub_events:
             header = handle_stk_uhdr(parser, sub_events)
             stk_data = [handle_stk_udata(parser, [ev]).frames for ev in events if
-                        parser.trace_codes[ev.eventid] == 'PERF_STK_UData']
+                        parser.trace_codes.get(ev.eventid, '') == 'PERF_STK_UData']
             e.cs_frames = list(chain.from_iterable(stk_data))[:header.nframes]
             e.cs_flags = header.flags
 

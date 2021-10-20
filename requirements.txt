@@ -1,3 +1,4 @@
 construct
 pygments
 click
+termcolor

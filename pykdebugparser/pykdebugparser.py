@@ -2,12 +2,14 @@ from datetime import datetime
 import io
 
 from pygments import highlight, lexers, formatters
+from termcolor import colored
 
 from pykdebugparser.callstacks_parser import CallstacksParser
 from pykdebugparser.kd_buf_parser import KdBufParser
 from pykdebugparser.kevent import DgbFuncQual
 from pykdebugparser.trace_codes import default_trace_codes
 from pykdebugparser.traces_parser import TracesParser
+from pykdebugparser.os_log_event import OsLogEvent
 
 c_lexer = lexers.CLexer()
 color_formatter = formatters.TerminalTrueColorFormatter(style='stata-dark')
@@ -36,6 +38,7 @@ class PyKdebugParser:
 
     def kevents(self, kdebug: io.IOBase):
         events_generator = KdBufParser(self.threads_pids, self.pids_names).parse(kdebug)
+        events_generator = filter(lambda e: not isinstance(e, OsLogEvent), events_generator)
         if self.filter_tid is not None:
             events_generator = filter(lambda e: e.tid == self.filter_tid, events_generator)
         return events_generator
@@ -61,6 +64,19 @@ class PyKdebugParser:
 
     def formatted_callstacks(self, kdebug: io.IOBase, trace_codes=None):
         return map(lambda t: self._format_callstack(t), self.callstacks(kdebug, trace_codes))
+
+    def os_log_events(self, kdebug: io.IOBase):
+        events_generator = KdBufParser(self.threads_pids, self.pids_names).parse(kdebug)
+        events_generator = filter(lambda e: isinstance(e, OsLogEvent), events_generator)
+        if self.filter_tid is not None:
+            events_generator = filter(lambda e: e.thread_identifier == self.filter_tid, events_generator)
+        if self.filter_process is not None:
+            events_generator = filter(lambda e: self.filter_process in (e.process, str(e.process_identifier)),
+                                      events_generator)
+        return events_generator
+
+    def formatted_logs(self, kdebug: io.IOBase):
+        return map(lambda t: self._format_log(t), self.os_log_events(kdebug))
 
     def _filter_process_callback(self, trace):
         tid = trace.ktraces[0].tid
@@ -132,3 +148,14 @@ class PyKdebugParser:
             line = f'{frame.uuid}:0x{frame.offset:016x}' if frame.uuid is not None else f'0x{frame.address:016x}'
             ret.append((' ' * i) + line)
         return '\n'.join(ret)
+
+    def _format_log(self, os_log: OsLogEvent):
+        time_string = os_log.unix_date.strftime('%Y-%m-%d %H:%M:%S.%f')
+        timestamp = f'{time_string:<27}'
+        event_rep = colored(str(timestamp), 'green') if self.color else str(timestamp)
+        if os_log.process:
+            process = self._format_process(os_log.thread_identifier)
+            process = colored(process, 'magenta') if self.color else process
+            event_rep += f' {process:<27} '
+        event_rep += colored(os_log.composed_message, 'white') if self.color else os_log.composed_message
+        return event_rep

@@ -4,9 +4,10 @@ import io
 import plistlib
 
 from construct import Adapter, Struct, Const, Padding, Int32ul, Int64ul, Array, GreedyRange, Byte, FixedSized, \
-    CString, Prefixed, GreedyBytes, Aligned
+    CString, Prefixed, GreedyBytes, Aligned, Bytes, Select
 
 from pykdebugparser.kevent import from_kd_buf, KD_BUF_FORMAT
+from pykdebugparser.os_log_event import OsLogEvent
 
 KEVENT_SIZE = struct.calcsize(KD_BUF_FORMAT)
 
@@ -19,6 +20,13 @@ TRACEV3_STACKSHOT_END = b'stackshot_out_fl'
 TRACEV3_THREADMAP_TAG = b'\x00\x1d\x00\x00\x00\x00\x00\x00'
 TRACEV3_EVENTS_TAG = b'\x00\x1e\x00\x00\x00\x00\x00\x00'
 TRACEV3_MORE_EVENTS = b'\x00\x20\x00\x00\x00\x00\x00\x00'
+TRACEV3_DYLD_MODULES = b'\x01\x80\x00\x00\x00\x00\x00\x00'
+TRACEV3_TRACE_CODES = b'\x0f\x80\x00\x00\x00\x00\x00\x00'
+TRACEV3_PROCESSES = b'\x10\x80\x00\x00\x00\x00\x00\x00'
+TRACEV3_LOG_EVENTS = b'\x11\x80\x00\x00\x00\x00\x00\x00'
+TRACEV3_LOG_STRINGS = b'\x12\x80\x00\x00\x00\x00\x00\x00'
+TRACEV3_KERNEL_EXTENSIONS = b'\x05\x80\x00\x00\x00\x00\x00\x00'
+TRACEV3_IMAGES = b'\x04\x80\x00\x00\x01\x00\x00\x00'
 
 kd_threadmap = Struct(
     'tid' / Int64ul,
@@ -71,6 +79,11 @@ kd_v3_threadmap = Struct(
     'threadmap' / Prefixed(Int64ul, GreedyRange(kd_threadmap)),
 )
 
+kd_v3_additional_data = GreedyRange(Struct(
+    'tag' / Bytes(8),
+    'data' / Select(Aligned(8, Prefixed(Int64ul, GreedyBytes)), Prefixed(Int64ul, GreedyBytes)),
+))
+
 
 def seek_until(reader, data: bytes):
     """
@@ -79,9 +92,9 @@ def seek_until(reader, data: bytes):
     :param reader: Stream to read from.
     :param data: Data to match.
     """
-    while True:
-        if reader.read(len(data)) == data:
-            break
+    found = reader.read(len(data))
+    while found != data:
+        found = found[1:] + reader.read(1)
 
 
 class KdBufParser:
@@ -97,9 +110,10 @@ class KdBufParser:
             RAW_VERSION3_BYTES: self.parse_v3,
         }
         self.trace_codes = ''
-        self.binaries = {}
         self.images = {}
-        self.kernel_binaries = {}
+        self.dyld_modules = {}
+        self.processes = {}
+        self.kernel_extensions = {'Binaries': []}
         self.v3_header = None
 
     def parse(self, reader: io.IOBase):
@@ -156,18 +170,42 @@ class KdBufParser:
                 yield from_kd_buf(buf)
             if reader.read(len(TRACEV3_MORE_EVENTS)) != TRACEV3_MORE_EVENTS:
                 break
+        reader.seek(-8, 1)
 
-        size = Int64ul.parse_stream(reader)
-        self.trace_codes = reader.read(size).decode()
-        reader.read(10)  # Unknown.
-        size = Int64ul.parse_stream(reader)
-        self.trace_codes += reader.read(size).decode()
-        reader.read(10)  # Unknown.
-        size = Int64ul.parse_stream(reader)
-        self.binaries.update(plistlib.loads(reader.read(size)))
-        reader.read(12)  # Unknown.
-        size = Int64ul.parse_stream(reader)
-        self.images.update(plistlib.loads(reader.read(size)))
-        reader.read(12)  # Unknown.
-        size = Int64ul.parse_stream(reader)
-        self.kernel_binaries.update(plistlib.loads(reader.read(size)))
+        additional_data = kd_v3_additional_data.parse_stream(reader)
+
+        self.trace_codes = ''
+        self.kernel_extensions = {'Binaries': []}
+        self.dyld_modules = {}
+        self.images = {}
+        self.processes = {}
+
+        log_events = []
+        log_strings = {}
+
+        for block in additional_data:
+            if block.tag == TRACEV3_DYLD_MODULES:
+                data = plistlib.loads(block.data)
+                if not self.dyld_modules:
+                    self.dyld_modules.update(data)
+                else:
+                    self.dyld_modules['Binaries'].extend(data['Binaries'])
+            elif block.tag == TRACEV3_TRACE_CODES:
+                self.trace_codes += block.data.decode()
+            elif block.tag == TRACEV3_PROCESSES:
+                self.processes = plistlib.loads(block.data)
+            elif block.tag == TRACEV3_KERNEL_EXTENSIONS:
+                self.kernel_extensions['Binaries'].extend(plistlib.loads(block.data)['Binaries'])
+            elif block.tag == TRACEV3_IMAGES:
+                self.images = plistlib.loads(block.data)
+            elif block.tag == TRACEV3_LOG_EVENTS:
+                log_events.extend(plistlib.loads(block.data)['Events'])
+            elif block.tag == TRACEV3_LOG_STRINGS:
+                log_strings = {v: k for k, v in plistlib.loads(block.data)['StringIndex'].items()}
+
+        for event in log_events:
+            log_event = OsLogEvent.from_raw_log_event(event, log_strings)
+            if log_event.process and log_event.thread_identifier:
+                self.threads_pids[log_event.thread_identifier] = log_event.process_identifier
+                self.pids_names[log_event.process_identifier] = log_event.process
+            yield log_event
