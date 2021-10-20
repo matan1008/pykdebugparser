@@ -86,7 +86,7 @@ class DyldBootstrapStart:
     ktraces: List
 
     def __str__(self):
-        return f'DBG_DYLD_TIMING_BOOTSTRAP_START'
+        return 'DBG_DYLD_TIMING_BOOTSTRAP_START'
 
 
 @dataclass
