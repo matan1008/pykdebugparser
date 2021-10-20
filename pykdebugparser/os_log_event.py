@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 import enum
 from typing import List, Dict
 
@@ -186,7 +186,8 @@ class OsLogEvent:
             'process_image_uuid': event.pop('piu'),
         }
         unix_date = event.pop('ud')
-        parsed_event['unix_date'] = datetime.fromtimestamp(unix_date['sec'] + (unix_date['usec'] / 10 ** 6))
+        parsed_event['unix_date'] = datetime.fromtimestamp(unix_date['sec'] + (unix_date['usec'] / 10 ** 6),
+                                                           tz=timezone.utc)
         utz = event.pop('utz')
         parsed_event['unix_timezone'] = {'minutes_west': utz['mw'], 'dst_time': utz['dt']}
         if 'ti' in event:

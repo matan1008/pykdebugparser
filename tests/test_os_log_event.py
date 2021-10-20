@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pykdebugparser.os_log_event import OsLogEvent, OsLogType, FirehoseTracepointNamespace, FirehoseTracepointLogType, \
     FirehoseTracepointFlagsPcStyle, FirehoseTracepointLogFlags
@@ -119,7 +119,7 @@ def test_parsing_raw_log_event():
     assert parsed_event.log_type == OsLogType.INFO
     assert parsed_event.process_image_uuid == b'\\xc4\\x9e\\x0c:\\xa9\\xc3:\\xb9\\x95\\xc4$b\\x80\\xf9#M'
     assert parsed_event.composed_message == '{"msg":"received AOP log", "log":{"flags":1,"seq":329,"data":[13034]}}'
-    assert parsed_event.unix_date == datetime(2021, 10, 10, 16, 34, 33, 810447)
+    assert parsed_event.unix_date == datetime(2021, 10, 10, 13, 34, 33, 810447, tzinfo=timezone.utc)
     assert parsed_event.sender == 'locationd'
     assert parsed_event.category == 'AOP'
     assert parsed_event.process_identifier == 70
@@ -248,7 +248,7 @@ def test_parsing_event_with_backtrace():
         '-[CSFallbackAudioSessionReleaseProvider fallbackDeactivateAudioSession:'
         'error:] Cannot deactivateAudioSession with (null)'
     )
-    assert parsed_event.unix_date == datetime(2021, 10, 20, 10, 23, 3, 341124)
+    assert parsed_event.unix_date == datetime(2021, 10, 20, 7, 23, 3, 341124, tzinfo=timezone.utc)
     assert parsed_event.sender == 'corespeechd'
     assert parsed_event.category == 'Framework'
     assert parsed_event.process_identifier == 118
