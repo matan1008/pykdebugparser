@@ -31,11 +31,13 @@ class TraceDataExec:
 class TraceDataThreadTerminate:
     ktraces: List
     tid: int
-    pid: int
+    pid: int = None
     name: str = ''
 
     def __str__(self):
-        rep = f'Thread terminated tid: {self.tid}, pid: {self.pid}'
+        rep = f'Thread terminated tid: {self.tid}'
+        if self.pid is not None:
+            rep += f', pid: {self.pid}'
         if self.name:
             rep += f', name: {self.name}'
         return rep
@@ -122,7 +124,7 @@ def handle_trace_data_exec(parser, events):
 
 def handle_trace_data_thread_terminate(parser, events):
     tid = events[0].values[0]
-    event = TraceDataThreadTerminate(events, tid, parser.threads_pids[tid])
+    event = TraceDataThreadTerminate(events, tid, parser.threads_pids.get(tid))
     event.name = parser.tids_names.get(tid, '')
     return event
 
