@@ -35,11 +35,10 @@ class TracesParser:
         self.handlers.update(mach_handlers)
         self.handlers.update(perf_handlers)
         self.handlers.update(trace_handlers)
-        # Event ids that mess up the flow.
-        self.blacklisted = (0x1030454, 0x2b3100d0, 0x2b3100e8, 0x2b3100d4, 0x2b3100b8, 0x40c05a4)
+
 
     def feed(self, event):
-        if event.eventid in self.blacklisted:
+        if self._is_blacklisted(event):
             return
         if event.eventid in self.trace_codes:
             trace_name = self.trace_codes[event.eventid]
@@ -112,3 +111,14 @@ class TracesParser:
             state[event.tid].append(event)
         else:
             return self.parse_event_list([event])
+
+    @staticmethod
+    def _is_blacklisted(event):
+        """ Event ids that mess up the flow. """
+        if event.eventid in (
+                0x1030454, 0x2b3100d0, 0x2b3100e8, 0x2b3100d4, 0x2b3100b8, 0x40c05a4, 0x211200dc, 0x9030054,
+                0x263b0028, 0x26190020, 0x26380028):
+            return True
+        if event.eventid >> 16 in (0x31ca, 0x2112, 0x2111, 0x2900, 0x1413):
+            return True
+        return False
