@@ -79,6 +79,88 @@ def test_decr_set(traces_parser):
     assert decr_set.queue_count == 0
 
 
+def test_msc_mach_vm_allocate_trap(traces_parser):
+    events = [
+        Kevent(timestamp=7476363431,
+               data=(b'\x03\x02\x00\x00\x00\x00\x00\x00\x08#\xc0k\x01\x00\x00\x00\xa0o\n\x00\x00\x00'
+                     b'\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00'),
+               values=(515, 6102721288, 683936, 1), tid=6740, debugid=17563689, eventid=17563688,
+               func_qualifier=1),
+        Kevent(timestamp=7476363521,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(0, 0, 0, 0), tid=6740, debugid=17563690, eventid=17563688,
+               func_qualifier=2)
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert len(ret) == 1
+    vm_allocate_trap = ret[0]
+    assert vm_allocate_trap.target == 515
+    assert vm_allocate_trap.address == 0x16bc02308
+    assert vm_allocate_trap.size == 0xa6fa0
+    assert vm_allocate_trap.flags == 1
+
+
+def test_msc_kern_mach_vm_purgable_control_trap(traces_parser):
+    events = [
+        Kevent(timestamp=7498028542,
+               data=(b'\x03\x02\x00\x00\x00\x00\x00\x00\x00@d\x02\x01\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\xa4\xd9\x9do\x01\x00\x00\x00'),
+               values=(515, 4335091712, 0, 6167583140), tid=7649, debugid=17563693, eventid=17563692, func_qualifier=1),
+        Kevent(timestamp=7498028620,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(0, 0, 0, 0), tid=7649, debugid=17563694, eventid=17563692, func_qualifier=2)
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert len(ret) == 1
+    mach = ret[0]
+    assert mach.target == 515
+    assert mach.address == 0x102644000
+    assert mach.control == 0
+    assert mach.state == 0x16f9dd9a4
+
+
+def test_msc_mach_vm_protect_trap(traces_parser):
+    events = [
+        Kevent(timestamp=319993982901,
+               data=(b'\x03\x02\x00\x00\x00\x00\x00\x00\x00\xc0@k\x01\x00\x00\x00\x00@\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(515, 6094372864, 16384, 0), tid=57703, debugid=17563705, eventid=17563704, func_qualifier=1),
+        Kevent(timestamp=319993982995,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(0, 0, 0, 0), tid=57703, debugid=17563706, eventid=17563704, func_qualifier=2)
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert len(ret) == 1
+    mach = ret[0]
+    assert mach.target == 515
+    assert mach.address == 0x16b40c000
+    assert mach.size == 0x4000
+    assert not mach.set_maximum
+
+
+def test_msc_mach_vm_map_trap(traces_parser):
+    events = [
+        Kevent(timestamp=319987780136,
+               data=(b'\x03\x02\x00\x00\x00\x00\x00\x00hf\xdbm\x01\x00\x00\x00\x00\x80\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(515, 6138062440, 32768, 0), tid=57808, debugid=17563709, eventid=17563708, func_qualifier=1),
+        Kevent(timestamp=319987780148,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(0, 0, 0, 0), tid=57808, debugid=17563710, eventid=17563708, func_qualifier=2)
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert len(ret) == 1
+    mach = ret[0]
+    assert mach.target == 515
+    assert mach.address == 0x16ddb6668
+    assert mach.size == 0x8000
+    assert mach.mask == 0
+
+
 def test_mach_vmfault(traces_parser):
     events = [
         Kevent(timestamp=10533581994269,
