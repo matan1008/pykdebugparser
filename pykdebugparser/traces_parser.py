@@ -7,6 +7,7 @@ from pykdebugparser.trace_handlers.fsystem import handlers as fsystem_handlers
 from pykdebugparser.trace_handlers.mach import handlers as mach_handlers
 from pykdebugparser.trace_handlers.perf import handlers as perf_handlers
 from pykdebugparser.trace_handlers.trace import handlers as trace_handlers
+from pykdebugparser.trace_handlers.turnstile import handlers as turnstile_handlers
 
 Vnode = namedtuple('Vnode', ['ktraces', 'vnode_id', 'path'])
 
@@ -35,7 +36,7 @@ class TracesParser:
         self.handlers.update(mach_handlers)
         self.handlers.update(perf_handlers)
         self.handlers.update(trace_handlers)
-
+        self.handlers.update(turnstile_handlers)
 
     def feed(self, event):
         if self._is_blacklisted(event):
