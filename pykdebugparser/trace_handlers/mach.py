@@ -141,6 +141,118 @@ def to_vm_prot(flags: int):
         return [p for p in VmProtection if p.value & flags]
 
 
+# osfmk/mach/port.h
+
+class MachPortRight(Enum):
+    MACH_PORT_RIGHT_SEND = 0
+    MACH_PORT_RIGHT_RECEIVE = 1
+    MACH_PORT_RIGHT_SEND_ONCE = 2
+    MACH_PORT_RIGHT_PORT_SET = 3
+    MACH_PORT_RIGHT_DEAD_NAME = 4
+    MACH_PORT_RIGHT_NUMBER = 5
+
+
+# osfmk/mach/message.h
+
+class MachMsgTypeName(Enum):
+    MACH_MSG_TYPE_MOVE_RECEIVE = 16
+    MACH_MSG_TYPE_MOVE_SEND = 17
+    MACH_MSG_TYPE_MOVE_SEND_ONCE = 18
+    MACH_MSG_TYPE_COPY_SEND = 19
+    MACH_MSG_TYPE_MAKE_SEND = 20
+    MACH_MSG_TYPE_MAKE_SEND_ONCE = 21
+    MACH_MSG_TYPE_COPY_RECEIVE = 22
+
+
+# osfmk/mach/kern_return.h
+
+class KernReturn(Enum):
+    KERN_SUCCESS = 0
+    KERN_INVALID_ADDRESS = 1
+    KERN_PROTECTION_FAILURE = 2
+    KERN_NO_SPACE = 3
+    KERN_INVALID_ARGUMENT = 4
+    KERN_FAILURE = 5
+    KERN_RESOURCE_SHORTAGE = 6
+    KERN_NOT_RECEIVER = 7
+    KERN_NO_ACCESS = 8
+    KERN_MEMORY_FAILURE = 9
+    KERN_MEMORY_ERROR = 10
+    KERN_ALREADY_IN_SET = 11
+    KERN_NOT_IN_SET = 12
+    KERN_NAME_EXISTS = 13
+    KERN_ABORTED = 14
+    KERN_INVALID_NAME = 15
+    KERN_INVALID_TASK = 16
+    KERN_INVALID_RIGHT = 17
+    KERN_INVALID_VALUE = 18
+    KERN_UREFS_OVERFLOW = 19
+    KERN_INVALID_CAPABILITY = 20
+    KERN_RIGHT_EXISTS = 21
+    KERN_INVALID_HOST = 22
+    KERN_MEMORY_PRESENT = 23
+    KERN_MEMORY_DATA_MOVED = 24
+    KERN_MEMORY_RESTART_COPY = 25
+    KERN_INVALID_PROCESSOR_SET = 26
+    KERN_POLICY_LIMIT = 27
+    KERN_INVALID_POLICY = 28
+    KERN_INVALID_OBJECT = 29
+    KERN_ALREADY_WAITING = 30
+    KERN_DEFAULT_SET = 31
+    KERN_EXCEPTION_PROTECTED = 32
+    KERN_INVALID_LEDGER = 33
+    KERN_INVALID_MEMORY_CONTROL = 34
+    KERN_INVALID_SECURITY = 35
+    KERN_NOT_DEPRESSED = 36
+    KERN_TERMINATED = 37
+    KERN_LOCK_SET_DESTROYED = 38
+    KERN_LOCK_UNSTABLE = 39
+    KERN_LOCK_OWNED = 40
+    KERN_LOCK_OWNED_SELF = 41
+    KERN_SEMAPHORE_DESTROYED = 42
+    KERN_RPC_SERVER_TERMINATED = 43
+    KERN_RPC_TERMINATE_ORPHAN = 44
+    KERN_RPC_CONTINUE_ORPHAN = 45
+    KERN_NOT_SUPPORTED = 46
+    KERN_NODE_DOWN = 47
+    KERN_NOT_WAITING = 48
+    KERN_OPERATION_TIMED_OUT = 49
+    KERN_CODESIGN_ERROR = 50
+    KERN_POLICY_STATIC = 51
+    KERN_INSUFFICIENT_BUFFER_SIZE = 52
+    KERN_DENIED = 53
+
+
+# osfmk/mach/port.h
+
+class MachPortFlavor(Enum):
+    MACH_PORT_LIMITS_INFO = 1
+    MACH_PORT_RECEIVE_STATUS = 2
+    MACH_PORT_DNREQUESTS_SIZE = 3
+    MACH_PORT_TEMPOWNER = 4
+    MACH_PORT_IMPORTANCE_RECEIVER = 5
+    MACH_PORT_DENAP_RECEIVER = 6
+    MACH_PORT_INFO_EXT = 7
+
+
+# osfmk/mach/thread_switch.h
+
+class SwitchOption(Enum):
+    SWITCH_OPTION_NONE = 0
+    SWITCH_OPTION_DEPRESS = 1
+    SWITCH_OPTION_WAIT = 2
+    SWITCH_OPTION_DISPATCH_CONTENTION = 3
+    SWITCH_OPTION_OSLOCK_DEPRESS = 4
+    SWITCH_OPTION_OSLOCK_WAIT = 5
+
+
+# osfmk/mach/mk_timer.h
+
+class MkTimerFlags(Enum):
+    MK_TIMER_NORMAL = 0
+    MK_TIMER_CRITICAL = 1
+
+
 @dataclass
 class KernelDataAbortSameElExcArm:
     ktraces: List
@@ -193,6 +305,371 @@ class DecrSet:
 
     def __str__(self):
         return f'DecrSet, decr: {self.decr}'
+
+
+@dataclass
+class MachVmAllocate:
+    ktraces: List
+    target: int
+    address: int
+    size: int
+    flags: int
+
+    def __str__(self):
+        return f'mach_vm_allocate({self.target}, {hex(self.address)}, {hex(self.size)}, {hex(self.flags)})'
+
+
+@dataclass
+class MachVmPurgableControl:
+    ktraces: List
+    target: int
+    address: int
+    control: int
+    state: int
+
+    def __str__(self):
+        return f'mach_vm_purgable_control({self.target}, {hex(self.address)}, {self.control}, {hex(self.state)})'
+
+
+@dataclass
+class MachVmDeallocate:
+    ktraces: List
+    target: int
+    address: int
+    size: int
+
+    def __str__(self):
+        return f'mach_vm_deallocate({self.target}, {hex(self.address)}, {hex(self.size)})'
+
+
+@dataclass
+class MachVmProtect:
+    ktraces: List
+    target: int
+    address: int
+    size: int
+    set_maximum: bool
+
+    def __str__(self):
+        return f'mach_vm_protect({self.target}, {hex(self.address)}, {hex(self.size)}, {str(self.set_maximum).lower()})'
+
+
+@dataclass
+class MachVmMap:
+    ktraces: List
+    target: int
+    address: int
+    size: int
+    mask: int
+
+    def __str__(self):
+        return f'mach_vm_map({self.target}, {hex(self.address)}, {hex(self.size)}, {hex(self.mask)})'
+
+
+@dataclass
+class MachPortAllocate:
+    ktraces: List
+    target: int
+    right: MachPortRight
+    name: int
+
+    def __str__(self):
+        return f'mach_port_allocate({self.target}, {self.right.name}, {hex(self.name)})'
+
+
+@dataclass
+class MachPortDeallocate:
+    ktraces: List
+    target: int
+    name: int
+
+    def __str__(self):
+        return f'mach_port_deallocate({self.target}, {hex(self.name)})'
+
+
+@dataclass
+class MachPortModRefs:
+    ktraces: List
+    target: int
+    name: int
+    right: MachPortRight
+    delta: int
+
+    def __str__(self):
+        return f'mach_port_mod_refs({self.target}, {hex(self.name)}, {self.right.name}, {hex(self.delta)})'
+
+
+@dataclass
+class MachPortInsertRight:
+    ktraces: List
+    target: int
+    name: int
+    poly: int
+    poly_poly: MachMsgTypeName
+
+    def __str__(self):
+        return f'mach_port_insert_right({self.target}, {hex(self.name)}, {hex(self.poly)}, {self.poly_poly.name})'
+
+
+@dataclass
+class MachPortInsertMember:
+    ktraces: List
+    target: int
+    name: int
+    pset: int
+
+    def __str__(self):
+        return f'mach_port_insert_member({self.target}, {hex(self.name)}, {hex(self.pset)})'
+
+
+@dataclass
+class MachPortExtractMember:
+    ktraces: List
+    target: int
+    name: int
+    pset: int
+
+    def __str__(self):
+        return f'mach_port_extract_member({self.target}, {hex(self.name)}, {hex(self.pset)})'
+
+
+@dataclass
+class MachPortConstruct:
+    ktraces: List
+    target: int
+    options: int
+    context: int
+    name: int
+
+    def __str__(self):
+        return f'mach_port_construct({self.target}, {hex(self.options)}, {hex(self.context)}, {hex(self.name)})'
+
+
+@dataclass
+class MachPortDestruct:
+    ktraces: List
+    target: int
+    name: int
+    srdelta: int
+    guard: int
+
+    def __str__(self):
+        return f'mach_port_destruct({self.target}, {hex(self.name)}, {hex(self.srdelta)}, {hex(self.guard)})'
+
+
+@dataclass
+class HostSelf:
+    ktraces: List
+    result: int
+
+    def __str__(self):
+        return f'host_self(), result: {hex(self.result)}'
+
+
+@dataclass
+class SemaphoreSignal:
+    ktraces: List
+    signal_name: int
+
+    def __str__(self):
+        return f'semaphore_signal({hex(self.signal_name)})'
+
+
+@dataclass
+class SemaphoreWait:
+    ktraces: List
+    wait_name: int
+
+    def __str__(self):
+        return f'semaphore_wait({hex(self.wait_name)})'
+
+
+@dataclass
+class SemaphoreTimedwait:
+    ktraces: List
+    wait_name: int
+    sec: int
+    nsec: int
+    result: KernReturn
+
+    def __str__(self):
+        return f'semaphore_timedwait({hex(self.wait_name)}, {self.sec}, {self.nsec}), result: {self.result.name}'
+
+
+@dataclass
+class MachPortGetAttributes:
+    ktraces: List
+    target: int
+    name: int
+    flavor: MachPortFlavor
+    port_info_out: int
+
+    def __str__(self):
+        return (f'mach_port_get_attributes({self.target}, {hex(self.name)}, {self.flavor.name}, '
+                f'{hex(self.port_info_out)})')
+
+
+@dataclass
+class MachPortGuard:
+    ktraces: List
+    target: int
+    name: int
+    guard: int
+    strict: bool
+
+    def __str__(self):
+        return f'mach_port_guard({self.target}, {hex(self.name)}, {hex(self.guard)}, {str(self.strict).lower()})'
+
+
+@dataclass
+class MachGenerateActivityId:
+    ktraces: List
+    target: int
+    count: int
+    activity_id: int
+
+    def __str__(self):
+        return f'mach_generate_activity_id({self.target}, {self.count}, {hex(self.activity_id)})'
+
+
+@dataclass
+class MachMsg2:
+    ktraces: List
+    data: int
+    option64: int
+    header: int
+    send_size: int
+
+    def __str__(self):
+        return f'mach_msg2({hex(self.data)}, {hex(self.option64)}, {hex(self.header)}, {hex(self.send_size)})'
+
+
+@dataclass
+class ThreadGetSpecialReplyPort:
+    ktraces: List
+    result: int
+
+    def __str__(self):
+        return f'thread_get_special_reply_port(), result {hex(self.result)}'
+
+
+@dataclass
+class ThreadSwitch:
+    ktraces: List
+    thread_name: int
+    option: SwitchOption
+    option_time: int
+
+    def __str__(self):
+        return f'thread_switch({hex(self.thread_name)}, {self.option.name}, {self.option_time})'
+
+
+@dataclass
+class HostCreateMachVoucher:
+    ktraces: List
+    host: int
+    recipes: int
+    recipes_size: int
+    voucher: int
+
+    def __str__(self):
+        return (f'host_create_mach_voucher({hex(self.host)}, {hex(self.recipes)}, {self.recipes_size}'
+                f', {hex(self.voucher)})')
+
+
+@dataclass
+class MachPortType:
+    ktraces: List
+    task: int
+    name: int
+    ptype: int
+
+    def __str__(self):
+        return f'mach_port_type({self.task}, {hex(self.name)}, {hex(self.ptype)})'
+
+
+@dataclass
+class MachPortRequestNotification:
+    ktraces: List
+    task: int
+    name: int
+    msgid: int
+    sync: int
+
+    def __str__(self):
+        return f'mach_port_request_notification({self.task}, {hex(self.name)}, {hex(self.msgid)}, {self.sync})'
+
+
+@dataclass
+class MachWaitUntil:
+    ktraces: List
+    deadline: int
+
+    def __str__(self):
+        return f'mach_wait_until({self.deadline})'
+
+
+@dataclass
+class MkTimerCreate:
+    ktraces: List
+    timer_port: int
+
+    def __str__(self):
+        return f'mk_timer_create(), timer: {hex(self.timer_port)}'
+
+
+@dataclass
+class MkTimerDestroy:
+    ktraces: List
+    name: int
+
+    def __str__(self):
+        return f'mk_timer_destroy({hex(self.name)})'
+
+
+@dataclass
+class MkTimerArm:
+    ktraces: List
+    name: int
+    expire_time: int
+
+    def __str__(self):
+        return f'mk_timer_arm({hex(self.name)}, {self.expire_time})'
+
+
+@dataclass
+class MkTimerCancel:
+    ktraces: List
+    name: int
+    result_time: int
+
+    def __str__(self):
+        return f'mk_timer_cancel({hex(self.name)}, {self.result_time})'
+
+
+@dataclass
+class MkTimerArmLeeway:
+    ktraces: List
+    name: int
+    mk_timer_flags: MkTimerFlags
+    mk_timer_expire_time: int
+    mk_timer_leeway: int
+
+    def __str__(self):
+        return (f'mk_timer_arm_leeway({hex(self.name)}, {self.mk_timer_flags.name}, {self.mk_timer_expire_time}'
+                f', {self.mk_timer_leeway})')
+
+
+@dataclass
+class IokitUserClient:
+    ktraces: List
+    user_client_ref: int
+    index: int
+    p1: int
+    p2: int
+
+    def __str__(self):
+        return f'iokit_user_client({hex(self.user_client_ref)}, {self.index}, {hex(self.p1)}, {hex(self.p2)})'
 
 
 @dataclass
@@ -408,6 +885,168 @@ def handle_decr_set(parser, events):
     return DecrSet(events, args[0], args[2], args[3])
 
 
+def handle_msc_mach_vm_allocate_trap(parser, events):
+    return MachVmAllocate(events, *events[0].values)
+
+
+def handle_msc_kern_mach_vm_purgable_control_trap(parser, events):
+    return MachVmPurgableControl(events, *events[0].values)
+
+
+def handle_msc_mach_vm_deallocate_trap(parser, events):
+    return MachVmDeallocate(events, *events[0].values[:3])
+
+
+def handle_msc_mach_vm_protect_trap(parser, events):
+    return MachVmProtect(events, *events[0].values[:3], bool(events[0].values[3]))
+
+
+def handle_msc_mach_vm_map_trap(parser, events):
+    return MachVmMap(events, *events[0].values)
+
+
+def handle_msc_mach_port_allocate_trap(parser, events):
+    args = events[0].values
+    return MachPortAllocate(events, args[0], MachPortRight(args[1]), args[2])
+
+
+def handle_msc_mach_port_deallocate_trap(parser, events):
+    return MachPortDeallocate(events, *events[0].values[:2])
+
+
+def handle_msc_mach_port_mod_refs_trap(parser, events):
+    args = events[0].values
+    return MachPortModRefs(events, args[0], args[1], MachPortRight(args[2]), args[3])
+
+
+def handle_msc_mach_port_insert_right_trap(parser, events):
+    return MachPortInsertRight(events, *events[0].values[:3], MachMsgTypeName(events[0].values[3]))
+
+
+def handle_msc_mach_port_insert_member_trap(parser, events):
+    return MachPortInsertMember(events, *events[0].values[:3])
+
+
+def handle_msc_mach_port_extract_member_trap(parser, events):
+    return MachPortExtractMember(events, *events[0].values[:3])
+
+
+def handle_msc_mach_port_construct_trap(parser, events):
+    return MachPortConstruct(events, *events[0].values)
+
+
+def handle_msc_mach_port_destruct_trap(parser, events):
+    for event in events[1:-1]:
+        parser.injected_events.put(event)
+    return MachPortDestruct(events, *events[0].values)
+
+
+def handle_msc_host_self_port(parser, events):
+    return HostSelf(events, events[-1].values[0])
+
+
+def handle_msc_semaphore_signal_trap(parser, events):
+    for event in events[1:-1]:
+        parser.injected_events.put(event)
+    return SemaphoreSignal(events, events[0].values[0])
+
+
+def handle_msc_semaphore_wait_trap(parser, events):
+    for event in events[1:-1]:
+        parser.injected_events.put(event)
+    return SemaphoreWait(events, events[0].values[0])
+
+
+def handle_msc_semaphore_timedwait_trap(parser, events):
+    for event in events[1:-1]:
+        parser.injected_events.put(event)
+    args = events[0].values
+    return SemaphoreTimedwait(events, args[0], args[1] & 0xffffffff, args[2], KernReturn(events[-1].values[0]))
+
+
+def handle_msc_mach_port_get_attributes_trap(parser, events):
+    args = events[0].values
+    return MachPortGetAttributes(events, *args[:2], MachPortFlavor(args[2]), args[3])
+
+
+def handle_msc_mach_port_guard_trap(parser, events):
+    return MachPortGuard(events, *events[0].values[:3], bool(events[0].values[3]))
+
+
+def handle_msc_mach_generate_activity_id(parser, events):
+    return MachGenerateActivityId(events, *events[0].values[:3])
+
+
+def handle_msc_mach_msg2_trap(parser, events):
+    for event in events[1:-1]:
+        parser.injected_events.put(event)
+    return MachMsg2(events, *events[0].values)
+
+
+def handle_msc_thread_get_special_reply_port(parser, events):
+    return ThreadGetSpecialReplyPort(events, events[-1].values[0])
+
+
+def handle_msc_thread_switch(parser, events):
+    for event in events[1:-1]:
+        parser.injected_events.put(event)
+    args = events[0].values
+    return ThreadSwitch(events, args[0], SwitchOption(args[1]), args[2])
+
+
+def handle_msc_host_create_mach_voucher_trap(parser, events):
+    return HostCreateMachVoucher(events, *events[0].values)
+
+
+def handle_msc_mach_port_type_trap(parser, events):
+    for event in events[1:-1]:
+        parser.injected_events.put(event)
+    return MachPortType(events, *events[0].values[:3])
+
+
+def handle_msc_mach_port_request_notification_trap(parser, events):
+    for event in events[1:-1]:
+        parser.injected_events.put(event)
+    return MachPortRequestNotification(events, *events[0].values)
+
+
+def handle_msc_mach_wait_until(parser, events):
+    for event in events[1:-1]:
+        parser.injected_events.put(event)
+    return MachWaitUntil(events, events[0].values[0])
+
+
+def handle_msc_mk_timer_create(parser, events):
+    return MkTimerCreate(events, events[-1].values[0])
+
+
+def handle_msc_mk_timer_destroy(parser, events):
+    for event in events[1:-1]:
+        parser.injected_events.put(event)
+    return MkTimerDestroy(events, events[0].values[0])
+
+
+def handle_msc_mk_timer_arm(parser, events):
+    return MkTimerArm(events, *events[0].values[:2])
+
+
+def handle_msc_mk_timer_cancel(parser, events):
+    return MkTimerCancel(events, *events[0].values[:2])
+
+
+def handle_msc_mk_timer_arm_leeway(parser, events):
+    for event in events[1:-1]:
+        parser.injected_events.put(event)
+    args = events[0].values
+    return MkTimerArmLeeway(events, args[0], MkTimerFlags(args[1]), args[2], args[3])
+
+
+def handle_msc_iokit_user_client(parser, events):
+    for event in events[1:-1]:
+        parser.injected_events.put(event)
+    return IokitUserClient(events, *events[0].values)
+
+
 def handle_mach_vmfault(parser, events):
     args = events[0].values
     is_kernel = bool(args[2])
@@ -488,6 +1127,39 @@ handlers = {
     'User_Data_Abort_Lower_EL_Exc_ARM': handle_user_data_abort_lower_el_exc_arm,
     'INTERRUPT': handle_interrupt,
     'DecrSet': handle_decr_set,
+    'MSC_mach_vm_allocate_trap': handle_msc_mach_vm_allocate_trap,
+    'MSC_kern_mach_vm_purgable_control_trap': handle_msc_kern_mach_vm_purgable_control_trap,
+    'MSC_mach_vm_deallocate_trap': handle_msc_mach_vm_deallocate_trap,
+    'MSC_mach_vm_protect_trap': handle_msc_mach_vm_protect_trap,
+    'MSC_mach_vm_map_trap': handle_msc_mach_vm_map_trap,
+    'MSC_mach_port_allocate_trap': handle_msc_mach_port_allocate_trap,
+    'MSC_mach_port_deallocate_trap': handle_msc_mach_port_deallocate_trap,
+    'MSC_mach_port_mod_refs_trap': handle_msc_mach_port_mod_refs_trap,
+    'MSC_mach_port_insert_right_trap': handle_msc_mach_port_insert_right_trap,
+    'MSC_mach_port_insert_member_trap': handle_msc_mach_port_insert_member_trap,
+    'MSC_mach_port_extract_member_trap': handle_msc_mach_port_extract_member_trap,
+    'MSC_mach_port_construct_trap': handle_msc_mach_port_construct_trap,
+    'MSC_mach_port_destruct_trap': handle_msc_mach_port_destruct_trap,
+    'MSC_host_self_trap': handle_msc_host_self_port,
+    'MSC_semaphore_signal_trap': handle_msc_semaphore_signal_trap,
+    'MSC_semaphore_wait_trap': handle_msc_semaphore_wait_trap,
+    'MSC_semaphore_timedwait_trap': handle_msc_semaphore_timedwait_trap,
+    'MSC_mach_port_get_attributes_trap': handle_msc_mach_port_get_attributes_trap,
+    'MSC_mach_port_guard_trap': handle_msc_mach_port_guard_trap,
+    'MSC_mach_generate_activity_id': handle_msc_mach_generate_activity_id,
+    'MSC_mach_msg2_trap': handle_msc_mach_msg2_trap,
+    'MSC_thread_get_special_reply_port': handle_msc_thread_get_special_reply_port,
+    'MSC_thread_switch': handle_msc_thread_switch,
+    'MSC_host_create_mach_voucher_trap': handle_msc_host_create_mach_voucher_trap,
+    'MSC_mach_port_type_trap': handle_msc_mach_port_type_trap,
+    'MSC_mach_port_request_notification_trap': handle_msc_mach_port_request_notification_trap,
+    'MSC_mach_wait_until': handle_msc_mach_wait_until,
+    'MSC_mk_timer_create': handle_msc_mk_timer_create,
+    'MSC_mk_timer_destroy': handle_msc_mk_timer_destroy,
+    'MSC_mk_timer_arm': handle_msc_mk_timer_arm,
+    'MSC_mk_timer_cancel': handle_msc_mk_timer_cancel,
+    'MSC_mk_timer_arm_leeway': handle_msc_mk_timer_arm_leeway,
+    'MSC_iokit_user_client': handle_msc_iokit_user_client,
     'MACH_vmfault': handle_mach_vmfault,
     'RealFaultAddressInternal': partial(handle_real_fault_address, RealFaultAddressInternal),
     'RealFaultAddressExternal': partial(handle_real_fault_address, RealFaultAddressExternal),
