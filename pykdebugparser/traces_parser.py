@@ -1,4 +1,5 @@
 from collections import namedtuple
+from queue import Queue
 
 from pykdebugparser.kevent import DgbFuncQual
 from pykdebugparser.trace_handlers.bsd import handlers as bsd_handlers
@@ -21,6 +22,7 @@ class TracesParser:
         self.threads_pids = threads_pids
         self.pids_names = pids_names
         self.tids_names = {}
+        self.injected_events = Queue()
         self.qualifiers_actions = {
             DgbFuncQual.DBG_FUNC_START.value: self._feed_start_event,
             DgbFuncQual.DBG_FUNC_END.value: self._feed_end_event,
@@ -50,6 +52,10 @@ class TracesParser:
 
     def feed_generator(self, generator):
         for event in generator:
+            if not self.injected_events.empty():
+                ret = self.feed(self.injected_events.get_nowait())
+                if ret is not None:
+                    yield ret
             ret = self.feed(event)
             if ret is not None:
                 yield ret
