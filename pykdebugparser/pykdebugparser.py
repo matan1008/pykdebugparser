@@ -14,11 +14,17 @@ from pykdebugparser.os_log_event import OsLogEvent
 c_lexer = lexers.CLexer()
 color_formatter = formatters.TerminalTrueColorFormatter(style='stata-dark')
 
+DBG_TRACE = 7
+DBG_FSYSTEM = 3
+DBG_BSD = 4
+
 
 class PyKdebugParser:
     def __init__(self):
         self.filter_tid = None
         self.filter_process = None
+        self.filter_class = []
+        self.filter_subclass = []
         self.show_timestamp = True
         self.show_name = True
         self.show_func_qual = True
@@ -41,6 +47,8 @@ class PyKdebugParser:
         events_generator = filter(lambda e: not isinstance(e, OsLogEvent), events_generator)
         if self.filter_tid is not None:
             events_generator = filter(lambda e: e.tid == self.filter_tid, events_generator)
+        if self.filter_class or self.filter_subclass:
+            events_generator = filter(lambda e: self._is_eventid_allowed(e.eventid), events_generator)
         return events_generator
 
     def formatted_kevents(self, kdebug: io.IOBase, trace_codes=None):
@@ -49,10 +57,25 @@ class PyKdebugParser:
 
     def traces(self, kdebug: io.IOBase, trace_codes=None):
         trace_codes_map = default_trace_codes() if trace_codes is None else trace_codes
+
+        has_filters = self.filter_class or self.filter_subclass
+        add_trace_class = has_filters and DBG_TRACE not in self.filter_class
+        if add_trace_class:
+            self.filter_class.append(DBG_TRACE)
+        has_bsd = DBG_BSD in self.filter_class or any(filter(lambda sc: sc >> 8 == DBG_BSD, self.filter_subclass))
+        add_fs_class = has_filters and has_bsd and DBG_FSYSTEM not in self.filter_class
+        if add_fs_class:
+            self.filter_class.append(DBG_FSYSTEM)
+
         traces_parser = TracesParser(trace_codes_map, self.threads_pids, self.pids_names)
         trace_generator = traces_parser.feed_generator(self.kevents(kdebug))
+
         if self.filter_process is not None:
             trace_generator = filter(self._filter_process_callback, trace_generator)
+        if add_trace_class:
+            trace_generator = filter(lambda t: t.ktraces[0].eventid >> 24 != DBG_TRACE, trace_generator)
+        if add_fs_class:
+            trace_generator = filter(lambda t: t.ktraces[0].eventid >> 24 != DBG_FSYSTEM, trace_generator)
         return trace_generator
 
     def formatted_traces(self, kdebug: io.IOBase, trace_codes=None):
@@ -159,3 +182,6 @@ class PyKdebugParser:
             event_rep += f' {process:<27} '
         event_rep += colored(os_log.composed_message, 'white') if self.color else os_log.composed_message
         return event_rep
+
+    def _is_eventid_allowed(self, event_id):
+        return (event_id >> 24 in self.filter_class) or (event_id >> 16 in self.filter_subclass)
