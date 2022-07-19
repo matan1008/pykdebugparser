@@ -320,6 +320,7 @@ class ProcInfoCall(enum.Enum):
     PROC_INFO_CALL_CANUSEFGHW = 0xc
     PROC_INFO_CALL_PIDDYNKQUEUEINFO = 0xd
     PROC_INFO_CALL_UDATA_INFO = 0xe
+    PROC_INFO_CALL_15 = 0xf
 
 
 class FsSnapshotOp(enum.Enum):
