@@ -13,7 +13,6 @@ def test_uuid_map_a(traces_parser):
                eventid=520421376, func_qualifier=0)
     ]
     ret = list(traces_parser.feed_generator(events))
-    assert len(ret) == 1
     assert ret[0].uuid == UUID('19dd2ad4-45e0-3197-a5c4-53b357f361a0')
     assert ret[0].load_addr == 0x1aa753000
     assert ret[0].fsid == 0
@@ -28,7 +27,6 @@ def test_uuid_map_b(traces_parser):
                func_qualifier=0)
     ]
     ret = list(traces_parser.feed_generator(events))
-    assert len(ret) == 1
     assert ret[0].fid_objno == 147689
     assert ret[0].fid_generation == 0xfffffff
 
@@ -42,7 +40,6 @@ def test_uuid_shared_cache_a(traces_parser):
                eventid=520421416, func_qualifier=0)
     ]
     ret = list(traces_parser.feed_generator(events))
-    assert len(ret) == 1
     assert ret[0].uuid == UUID('0a017891-59fd-3e22-b89e-14384b30b50a')
     assert ret[0].load_addr == 0x18a658000
     assert ret[0].fsid == 0
@@ -56,7 +53,6 @@ def test_uuid_shared_cache_b(traces_parser):
                values=(0, 0, 0, 0), tid=200065, debugid=520421420, eventid=520421420, func_qualifier=0)
     ]
     ret = list(traces_parser.feed_generator(events))
-    assert len(ret) == 1
     assert ret[0].fid_objno == 0
     assert ret[0].fid_generation == 0
 
@@ -78,10 +74,9 @@ def test_timing_launch_executable(traces_parser):
                values=(1, 0, 0, 3), tid=227140, debugid=520552454, eventid=520552452, func_qualifier=2),
     ]
     ret = list(traces_parser.feed_generator(events))
-    assert len(ret) == 1
-    assert ret[0].main_executable_mh == 0x100970000
-    assert ret[0].uuid_map_a[0].uuid == UUID('19dd2ad4-45e0-3197-a5c4-53b357f361a0')
-    assert ret[0].uuid_map_a[0].load_addr == 0x1aa753000
+    assert ret[1].main_executable_mh == 0x100970000
+    assert ret[1].uuid_map_a[0].uuid == UUID('19dd2ad4-45e0-3197-a5c4-53b357f361a0')
+    assert ret[1].uuid_map_a[0].load_addr == 0x1aa753000
 
 
 def test_timing_func_for_add_image(traces_parser):
@@ -98,7 +93,6 @@ def test_timing_func_for_add_image(traces_parser):
                debugid=520552474, eventid=520552472, func_qualifier=2),
     ]
     ret = list(traces_parser.feed_generator(events))
-    assert len(ret) == 1
     assert ret[0].addr == 0x1b9a1a000
     assert ret[0].func == 0x19c444fbc
 
@@ -111,7 +105,6 @@ def test_timing_bootstrap_start(traces_parser):
                values=(0, 0, 0, 0), tid=227140, debugid=520552500, eventid=520552500, func_qualifier=0),
     ]
     ret = list(traces_parser.feed_generator(events))
-    assert len(ret) == 1
     assert str(ret[0]) == 'DBG_DYLD_TIMING_BOOTSTRAP_START'
 
 
@@ -205,7 +198,6 @@ def test_timing_dlclose(traces_parser):
                eventid=520617992, func_qualifier=2),
     ]
     ret = list(traces_parser.feed_generator(events))
-    assert len(ret) == 1
     assert ret[0].handle == 0xe1d4f80
 
 
@@ -255,6 +247,5 @@ def test_timing_dladdr(traces_parser):
                debugid=520618002, eventid=520618000, func_qualifier=2),
     ]
     ret = list(traces_parser.feed_generator(events))
-    assert len(ret) == 1
     assert ret[0].addr == 0x18de97d28
     assert ret[0].ret == 1

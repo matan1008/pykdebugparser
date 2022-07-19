@@ -320,6 +320,7 @@ class ProcInfoCall(enum.Enum):
     PROC_INFO_CALL_CANUSEFGHW = 0xc
     PROC_INFO_CALL_PIDDYNKQUEUEINFO = 0xd
     PROC_INFO_CALL_UDATA_INFO = 0xe
+    PROC_INFO_CALL_15 = 0xf
 
 
 class FsSnapshotOp(enum.Enum):
@@ -5894,8 +5895,6 @@ def handle_psynch_mutexwait(parser, events):
 
 
 def handle_psynch_mutexdrop(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     args = events[0].values
     return BscPsynchMutexdrop(events, args[0], args[1], args[2], args[3], serialize_result(events[-1]))
 
@@ -6056,8 +6055,6 @@ def handle_workq_open(parser, events):
 
 
 def handle_workq_kernreturn(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     args = events[0].values
     return BscWorkqKernreturn(events, args[0], args[1], args[2], args[3], serialize_result(events[-1], 'return'))
 
@@ -6077,8 +6074,6 @@ def handle_kevent_qos(parser, events):
 
 
 def handle_kevent_id(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     args = events[0].values
     return BscKeventId(events, args[0], args[1], args[2], args[3], serialize_result(events[-1], 'count'))
 
@@ -6454,8 +6449,6 @@ def handle_mach_eventlink_signal_wait_until(parser, events):
 
 
 def handle_work_interval_ctl(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     args = events[0].values
     return BscWorkIntervalCtl(events, args[0], args[1], args[2], args[3], serialize_result(events[-1]))
 
