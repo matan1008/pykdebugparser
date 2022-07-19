@@ -14,7 +14,6 @@ def test_read(traces_parser):
                values=(0, 25558, 0, 144), tid=7573, debugid=67895310, eventid=67895308, func_qualifier=2)
     ]
     ret = list(traces_parser.feed_generator(events))
-    assert len(ret) == 1
     assert str(ret[0]) == 'read(7, 0x11bf1c000, 25558), count: 25558'
 
 
@@ -30,5 +29,4 @@ def test_csops_audittoken_16(traces_parser):
                values=(34, 0, 0, 67), tid=1599, debugid=67895978, eventid=67895976, func_qualifier=2)
     ]
     ret = list(traces_parser.feed_generator(events))
-    assert len(ret) == 1
     assert str(ret[0]) == 'csops_audittoken(67, CS_OPS_16, 0x16da126a0, 8), errno: ERANGE(34)'

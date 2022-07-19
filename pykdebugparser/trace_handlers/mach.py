@@ -254,6 +254,22 @@ class MkTimerFlags(Enum):
 
 
 @dataclass
+class KernelUncategorizedExcArm:
+    ktraces: List
+    esr: int
+    far: int
+    pc: int
+
+    def __str__(self):
+        esr_class = self.esr >> 26
+        try:
+            esr_class = ExceptionSyndromeRegisterClass(esr_class).name
+        except ValueError:
+            pass
+        return f'KernelUncategorizedExcArm, class: {esr_class}, far: {hex(self.far)}, pc: {hex(self.pc)}'
+
+
+@dataclass
 class KernelDataAbortSameElExcArm:
     ktraces: List
     esr: int
@@ -267,6 +283,22 @@ class KernelDataAbortSameElExcArm:
         except ValueError:
             pass
         return f'Kernel_Data_Abort_Same_EL_Exc_ARM, class: {esr_class}, far: {hex(self.far)}, pc: {hex(self.pc)}'
+
+
+@dataclass
+class UserSvc64ExcArm:
+    ktraces: List
+    esr: int
+    far: int
+    pc: int
+
+    def __str__(self):
+        esr_class = self.esr >> 26
+        try:
+            esr_class = ExceptionSyndromeRegisterClass(esr_class).name
+        except ValueError:
+            pass
+        return f'User_SVC64_Exc_ARM, class: {esr_class}, far: {hex(self.far)}, pc: {hex(self.pc)}'
 
 
 @dataclass
@@ -861,13 +893,16 @@ class SchedClutchTgBucketPri:
         return f'SCHED_CLUTCH_TG_BUCKET_PRI, tgid: {self.tgid}, bucket: {self.scb_bucket}, priority: {self.priority}'
 
 
+def handle_kernel_uncategorized_exc_arm(parser, events):
+    return KernelUncategorizedExcArm(events, *events[0].values[:3])
+
+
 def handle_kernel_data_abort_same_el_exc_arm(parser, events):
-    args = events[0].values
-    return KernelDataAbortSameElExcArm(events, args[0], args[1], args[2])
+    return KernelDataAbortSameElExcArm(events, *events[0].values[:3])
 
 
 def handle_user_svc64_exc_arm(parser, events):
-    return parser.parse_event_list(events[1:-1]) if len(events) > 2 else None
+    return UserSvc64ExcArm(events, *events[0].values[:3])
 
 
 def handle_user_data_abort_lower_el_exc_arm(parser, events):
@@ -936,8 +971,6 @@ def handle_msc_mach_port_construct_trap(parser, events):
 
 
 def handle_msc_mach_port_destruct_trap(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     return MachPortDestruct(events, *events[0].values)
 
 
@@ -946,20 +979,14 @@ def handle_msc_host_self_port(parser, events):
 
 
 def handle_msc_semaphore_signal_trap(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     return SemaphoreSignal(events, events[0].values[0])
 
 
 def handle_msc_semaphore_wait_trap(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     return SemaphoreWait(events, events[0].values[0])
 
 
 def handle_msc_semaphore_timedwait_trap(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     args = events[0].values
     return SemaphoreTimedwait(events, args[0], args[1] & 0xffffffff, args[2], KernReturn(events[-1].values[0]))
 
@@ -978,8 +1005,6 @@ def handle_msc_mach_generate_activity_id(parser, events):
 
 
 def handle_msc_mach_msg2_trap(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     return MachMsg2(events, *events[0].values)
 
 
@@ -988,8 +1013,6 @@ def handle_msc_thread_get_special_reply_port(parser, events):
 
 
 def handle_msc_thread_switch(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     args = events[0].values
     return ThreadSwitch(events, args[0], SwitchOption(args[1]), args[2])
 
@@ -999,20 +1022,14 @@ def handle_msc_host_create_mach_voucher_trap(parser, events):
 
 
 def handle_msc_mach_port_type_trap(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     return MachPortType(events, *events[0].values[:3])
 
 
 def handle_msc_mach_port_request_notification_trap(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     return MachPortRequestNotification(events, *events[0].values)
 
 
 def handle_msc_mach_wait_until(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     return MachWaitUntil(events, events[0].values[0])
 
 
@@ -1021,8 +1038,6 @@ def handle_msc_mk_timer_create(parser, events):
 
 
 def handle_msc_mk_timer_destroy(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     return MkTimerDestroy(events, events[0].values[0])
 
 
@@ -1035,15 +1050,11 @@ def handle_msc_mk_timer_cancel(parser, events):
 
 
 def handle_msc_mk_timer_arm_leeway(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     args = events[0].values
     return MkTimerArmLeeway(events, args[0], MkTimerFlags(args[1]), args[2], args[3])
 
 
 def handle_msc_iokit_user_client(parser, events):
-    for event in events[1:-1]:
-        parser.injected_events.put(event)
     return IokitUserClient(events, *events[0].values)
 
 
@@ -1122,6 +1133,7 @@ def handle_sched_clutch_tg_bucket_pri(parser, events):
 
 
 handlers = {
+    'Kernel_Uncategorized_Exc_ARM': handle_kernel_uncategorized_exc_arm,
     'Kernel_Data_Abort_Same_EL_Exc_ARM': handle_kernel_data_abort_same_el_exc_arm,
     'User_SVC64_Exc_ARM': handle_user_svc64_exc_arm,
     'User_Data_Abort_Lower_EL_Exc_ARM': handle_user_data_abort_lower_el_exc_arm,

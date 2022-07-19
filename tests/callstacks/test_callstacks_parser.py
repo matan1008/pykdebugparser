@@ -34,7 +34,6 @@ def test_parsing_perf_event(traces_parser, callstacks_parser):
                values=(9, 0, 0, 0), tid=1957, debugid=620756994, eventid=620756992, func_qualifier=2)
     ]
     ret = list(callstacks_parser.feed_generator(traces_parser.feed_generator(events)))
-    assert len(ret) == 1
     assert ret[0].timestamp == 7006023115068
     assert ret[0].tid == 1957
     assert ret[0].frames == [
@@ -81,7 +80,6 @@ def test_parsing_with_images(traces_parser, callstacks_parser):
                values=(9, 0, 0, 0), tid=1957, debugid=620756994, eventid=620756992, func_qualifier=2)
     ]
     ret = list(callstacks_parser.feed_generator(traces_parser.feed_generator(events)))
-    assert len(ret) == 1
     assert ret[0].timestamp == 7006023115068
     assert ret[0].tid == 1957
     assert ret[0].frames == [
