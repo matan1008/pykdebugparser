@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pykdebugparser"
+version = "1.2.1"
+description = "Python parser for kdebug events"
+readme.file = "README.md"
+readme.content-type = "text/markdown"
+requires-python = ">=3.7"
+license = {file = "LICENSE"}
+authors = [
+  {email = "matan1008@gmail.com"},
+  {name = "Matan Perelman"},
+]
+classifiers = [
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+]
+dependencies = [
+    "construct",
+    "pygments",
+    "click",
+    "termcolor",
+]
+
+[project.urls]
+Homepage = "https://github.com/matan1008/pykdebugparser"
+Source = "https://github.com/matan1008/pykdebugparser"
+
+[project.optional-dependencies]
+testing = ["pytest"]
+
+[project.scripts]
+pykdebugparser = "pykdebugparser.__main__:cli"
+
+
+[tool.setuptools.packages]
+find = {}
+
+[tool.setuptools.package-data]
+pykdebugparser = ["*.txt", "*.TXT", "*.codes"]
+
+[tool.distutils.bdist_wheel]
+universal = true

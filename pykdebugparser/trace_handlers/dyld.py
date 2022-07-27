@@ -40,6 +40,27 @@ class DyldUuidMapB:
 
 
 @dataclass
+class DyldUuidUnmapA:
+    ktraces: List
+    uuid: UUID
+    load_addr: int
+    fsid: int
+
+    def __str__(self):
+        return f'DYLD_uuid_unmap_a, uuid: "{self.uuid}", load_addr: {hex(self.load_addr)}, fsid: {hex(self.fsid)}'
+
+
+@dataclass
+class DyldUuidUnmapB:
+    ktraces: List
+    fid_objno: int
+    fid_generation: int
+
+    def __str__(self):
+        return f'DYLD_uuid_unmap_b, fid_objno: {self.fid_objno}, fid_generation: {hex(self.fid_generation)}'
+
+
+@dataclass
 class DyldUuidSharedCacheA:
     ktraces: List
     uuid: UUID
@@ -69,6 +90,15 @@ class DyldLaunchExecutable:
 
     def __str__(self):
         return f'DBG_DYLD_TIMING_LAUNCH_EXECUTABLE, main_executable_mh: {hex(self.main_executable_mh)}'
+
+
+@dataclass
+class DyldMapImage:
+    ktraces: List
+    path: str
+
+    def __str__(self):
+        return f'DBG_DYLD_TIMING_MAP_IMAGE, path: {self.path}'
 
 
 @dataclass
@@ -151,6 +181,16 @@ def handle_uuid_map_b(parser, events):
     return DyldUuidMapB(events, arg & 0xffffffff, arg >> 32)
 
 
+def handle_uuid_unmap_a(parser, events):
+    args = events[0].values
+    return DyldUuidUnmapA(events, UUID(bytes=events[0].data[:16]), args[2], args[3])
+
+
+def handle_uuid_unmap_b(parser, events):
+    arg = events[0].values[0]
+    return DyldUuidUnmapB(events, arg & 0xffffffff, arg >> 32)
+
+
 def handle_uuid_shared_cache_a(parser, events):
     args = events[0].values
     return DyldUuidSharedCacheA(events, UUID(bytes=events[0].data[:16]), args[2], args[3])
@@ -167,6 +207,12 @@ def handle_timing_launch_executable(parser, events):
               parser.trace_codes.get(e.eventid) == 'DYLD_uuid_shared_cache_a']
     map_a = sorted(map_a, key=lambda x: x.load_addr)
     return DyldLaunchExecutable(events, events[0].values[1], map_a)
+
+
+def handle_timing_map_image(parser, events):
+    args = events[0].values
+    path = parser.global_strings[args[1]] if args[1] else ''
+    return DyldMapImage(events, path)
 
 
 def handle_timing_func_for_add_image(parser, events):
@@ -204,9 +250,12 @@ def handle_timing_dladdr(parser, events):
 handlers = {
     'DYLD_uuid_map_a': handle_uuid_map_a,
     'DYLD_uuid_map_b': handle_uuid_map_b,
+    'DYLD_uuid_unmap_a': handle_uuid_unmap_a,
+    'DYLD_uuid_unmap_b': handle_uuid_unmap_b,
     'DYLD_uuid_shared_cache_a': handle_uuid_shared_cache_a,
     'DYLD_uuid_shared_cache_b': handle_uuid_shared_cache_b,
     'DBG_DYLD_TIMING_LAUNCH_EXECUTABLE': handle_timing_launch_executable,
+    'DBG_DYLD_TIMING_MAP_IMAGE': handle_timing_map_image,
     'DBG_DYLD_TIMING_FUNC_FOR_ADD_IMAGE': handle_timing_func_for_add_image,
     'DBG_DYLD_TIMING_BOOTSTRAP_START': handle_timing_bootstrap_start,
     'DBG_DYLD_TIMING_DLOPEN': handle_timing_dlopen,
