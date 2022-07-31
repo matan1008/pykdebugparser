@@ -61,6 +61,21 @@ def test_user_data_abort_lower_el_exc_arm(traces_parser):
     assert abort.pc == 6762552612
 
 
+def test_decr_trap(traces_parser):
+    events = [
+        Kevent(timestamp=5453855881172,
+               data=(b'\xe3\xff\xff\xff\xff\xff\xff\xff\xc4\x9dt\xac\x01\x00\x00\x00\x01\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(18446744073709551587, 7188291012, 1, 0), tid=941745, debugid=17367040, eventid=17367040,
+               func_qualifier=0)
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    trace = ret[0]
+    assert trace.latency == -29
+    assert trace.pc == 0x1ac749dc4
+    assert trace.user_mode
+
+
 def test_decr_set(traces_parser):
     events = [
         Kevent(timestamp=10041923525014,
@@ -151,6 +166,88 @@ def test_msc_mach_vm_map_trap(traces_parser):
     assert mach.address == 0x16ddb6668
     assert mach.size == 0x8000
     assert mach.mask == 0
+
+
+def test_msc_mach_reply_port(traces_parser):
+    events = [
+        Kevent(timestamp=5453890497755,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(0, 0, 0, 0), tid=941818, debugid=17563753, eventid=17563752, func_qualifier=1),
+        Kevent(timestamp=5453890497771,
+               data=(b'\x03\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(771, 0, 0, 0), tid=941818, debugid=17563754, eventid=17563752, func_qualifier=2)
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    mach = ret[0]
+    assert mach.result == 0x303
+
+
+def test_msc_thread_self_trap(traces_parser):
+    events = [
+        Kevent(timestamp=5453890560892,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(0, 0, 0, 0), tid=941536, debugid=17563757, eventid=17563756, func_qualifier=1),
+        Kevent(timestamp=5453890560912,
+               data=(b'\x0b\xa6\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(42507, 0, 0, 0), tid=941536, debugid=17563758, eventid=17563756, func_qualifier=2)
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    mach = ret[0]
+    assert mach.result == 0xa60b
+
+
+def test_msc_task_self_trap(traces_parser):
+    events = [
+        Kevent(timestamp=5453890600244,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(0, 0, 0, 0), tid=941827, debugid=17563761, eventid=17563760, func_qualifier=1),
+        Kevent(timestamp=5453890600265,
+               data=(b'\x03\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(515, 0, 0, 0), tid=941827, debugid=17563762, eventid=17563760, func_qualifier=2)
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    mach = ret[0]
+    assert mach.result == 515
+
+
+def test_msc_mach_port_unguard_trap(traces_parser):
+    events = [
+        Kevent(timestamp=5453890742696,
+               data=(b'\x03\x02\x00\x00\x00\x00\x00\x00\x03\x8e\n\x00\x00\x00\x00\x000j\xd2G\x01\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(515, 691715, 5499939376, 0), tid=941734, debugid=17563817, eventid=17563816, func_qualifier=1),
+        Kevent(timestamp=5453890742704,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(0, 0, 0, 0), tid=941734, debugid=17563818, eventid=17563816, func_qualifier=2)
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    mach = ret[0]
+    assert mach.target == 515
+    assert mach.name == 0xa8e03
+    assert mach.guard == 0x147d26a30
+
+
+def test_msc_mach_timebase_info(traces_parser):
+    events = [
+        Kevent(timestamp=5453890643526,
+               data=(b'\xc4F\n\x0e\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(8825489092, 0, 0, 0), tid=941827, debugid=17564005, eventid=17564004, func_qualifier=1),
+        Kevent(timestamp=5453890643529,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(0, 0, 0, 0), tid=941827, debugid=17564006, eventid=17564004, func_qualifier=2)
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    mach = ret[0]
+    assert mach.info == 0x20e0a46c4
 
 
 def test_mach_vmfault(traces_parser):

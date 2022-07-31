@@ -313,6 +313,22 @@ class Interrupt:
 
 
 @dataclass
+class UserInstrAbortLowerElExcArm:
+    ktraces: List
+    esr: int
+    far: int
+    pc: int
+
+    def __str__(self):
+        esr_class = self.esr >> 26
+        try:
+            esr_class = ExceptionSyndromeRegisterClass(esr_class).name
+        except ValueError:
+            pass
+        return f'User_Instr_Abort_Lower_EL_Exc_ARM, class: {esr_class}, far: {hex(self.far)}, pc: {hex(self.pc)}'
+
+
+@dataclass
 class UserDataAbortLowerElExcArm:
     ktraces: List
     esr: int
@@ -326,6 +342,17 @@ class UserDataAbortLowerElExcArm:
         except ValueError:
             pass
         return f'User_Data_Abort_Lower_EL_Exc_ARM, class: {esr_class}, far: {hex(self.far)}, pc: {hex(self.pc)}'
+
+
+@dataclass
+class DecrTrap:
+    ktraces: List
+    latency: int
+    pc: int
+    user_mode: bool
+
+    def __str__(self):
+        return f'DecrTrap, latency: {self.latency}, pc: {hex(self.pc)}, user_mode: {self.user_mode}'
 
 
 @dataclass
@@ -490,6 +517,33 @@ class MachPortDestruct:
 
 
 @dataclass
+class MachReplyPort:
+    ktraces: List
+    result: int
+
+    def __str__(self):
+        return f'mach_reply_port(), result: {hex(self.result)}'
+
+
+@dataclass
+class MachThreadSelf:
+    ktraces: List
+    result: int
+
+    def __str__(self):
+        return f'mach_thread_self(), result: {hex(self.result)}'
+
+
+@dataclass
+class TaskSelf:
+    ktraces: List
+    result: int
+
+    def __str__(self):
+        return f'task_self(), result: {self.result}'
+
+
+@dataclass
 class HostSelf:
     ktraces: List
     result: int
@@ -551,6 +605,17 @@ class MachPortGuard:
 
     def __str__(self):
         return f'mach_port_guard({self.target}, {hex(self.name)}, {hex(self.guard)}, {str(self.strict).lower()})'
+
+
+@dataclass
+class MachPortUnguard:
+    ktraces: List
+    target: int
+    name: int
+    guard: int
+
+    def __str__(self):
+        return f'mach_port_unguard({self.target}, {hex(self.name)}, {hex(self.guard)})'
 
 
 @dataclass
@@ -633,6 +698,15 @@ class MachPortRequestNotification:
 
 
 @dataclass
+class MachTimebaseInfo:
+    ktraces: List
+    info: int
+
+    def __str__(self):
+        return f'mach_timebase_info({hex(self.info)})'
+
+
+@dataclass
 class MachWaitUntil:
     ktraces: List
     deadline: int
@@ -702,6 +776,28 @@ class IokitUserClient:
 
     def __str__(self):
         return f'iokit_user_client({hex(self.user_client_ref)}, {self.index}, {hex(self.p1)}, {hex(self.p2)})'
+
+
+@dataclass
+class ThreadSetVoucher:
+    ktraces: List
+    tid: int
+    port: int
+    voucher: int
+    persona_id: int
+
+    def __str__(self):
+        return (f'thread_set_voucher, tid: {self.tid}, port: {hex(self.port)}, voucher: {hex(self.voucher)}, '
+                f'persona_id: {self.persona_id}')
+
+
+@dataclass
+class MachPageout:
+    ktraces: List
+    size: int
+
+    def __str__(self):
+        return f'MACH_Pageout, size: {hex(self.size)}'
 
 
 @dataclass
@@ -905,6 +1001,10 @@ def handle_user_svc64_exc_arm(parser, events):
     return UserSvc64ExcArm(events, *events[0].values[:3])
 
 
+def handle_user_instr_abort_lower_el_exc_arm(parser, events):
+    return UserInstrAbortLowerElExcArm(events, *events[0].values[:3])
+
+
 def handle_user_data_abort_lower_el_exc_arm(parser, events):
     args = events[0].values
     return UserDataAbortLowerElExcArm(events, args[0], args[1], args[2])
@@ -913,6 +1013,11 @@ def handle_user_data_abort_lower_el_exc_arm(parser, events):
 def handle_interrupt(parser, events):
     args = events[0].values
     return Interrupt(events, args[1], bool(args[2]), args[3])
+
+
+def handle_decr_trap(parser, events):
+    args = events[0].values
+    return DecrTrap(events, ctypes.c_int64(args[0]).value, args[1], bool(args[2]))
 
 
 def handle_decr_set(parser, events):
@@ -974,6 +1079,18 @@ def handle_msc_mach_port_destruct_trap(parser, events):
     return MachPortDestruct(events, *events[0].values)
 
 
+def handle_msc_mach_reply_port(parser, events):
+    return MachReplyPort(events, events[-1].values[0])
+
+
+def handle_msc_thread_self_trap(parser, events):
+    return MachThreadSelf(events, events[-1].values[0])
+
+
+def handle_msc_task_self_port(parser, events):
+    return TaskSelf(events, events[-1].values[0])
+
+
 def handle_msc_host_self_port(parser, events):
     return HostSelf(events, events[-1].values[0])
 
@@ -998,6 +1115,10 @@ def handle_msc_mach_port_get_attributes_trap(parser, events):
 
 def handle_msc_mach_port_guard_trap(parser, events):
     return MachPortGuard(events, *events[0].values[:3], bool(events[0].values[3]))
+
+
+def handle_msc_mach_port_unguard_trap(parser, events):
+    return MachPortUnguard(events, *events[0].values[:3])
 
 
 def handle_msc_mach_generate_activity_id(parser, events):
@@ -1029,6 +1150,10 @@ def handle_msc_mach_port_request_notification_trap(parser, events):
     return MachPortRequestNotification(events, *events[0].values)
 
 
+def handle_msc_mach_timebase_info(parser, events):
+    return MachTimebaseInfo(events, events[0].values[0])
+
+
 def handle_msc_mach_wait_until(parser, events):
     return MachWaitUntil(events, events[0].values[0])
 
@@ -1056,6 +1181,14 @@ def handle_msc_mk_timer_arm_leeway(parser, events):
 
 def handle_msc_iokit_user_client(parser, events):
     return IokitUserClient(events, *events[0].values)
+
+
+def handle_mach_thread_set_voucher(parser, events):
+    return ThreadSetVoucher(events, *events[0].values)
+
+
+def handle_mach_pageout(parser, events):
+    return MachPageout(events, events[0].values[0])
 
 
 def handle_mach_vmfault(parser, events):
@@ -1136,8 +1269,10 @@ handlers = {
     'Kernel_Uncategorized_Exc_ARM': handle_kernel_uncategorized_exc_arm,
     'Kernel_Data_Abort_Same_EL_Exc_ARM': handle_kernel_data_abort_same_el_exc_arm,
     'User_SVC64_Exc_ARM': handle_user_svc64_exc_arm,
+    'User_Instr_Abort_Lower_EL_Exc_ARM': handle_user_instr_abort_lower_el_exc_arm,
     'User_Data_Abort_Lower_EL_Exc_ARM': handle_user_data_abort_lower_el_exc_arm,
     'INTERRUPT': handle_interrupt,
+    'DecrTrap': handle_decr_trap,
     'DecrSet': handle_decr_set,
     'MSC_mach_vm_allocate_trap': handle_msc_mach_vm_allocate_trap,
     'MSC_kern_mach_vm_purgable_control_trap': handle_msc_kern_mach_vm_purgable_control_trap,
@@ -1152,12 +1287,16 @@ handlers = {
     'MSC_mach_port_extract_member_trap': handle_msc_mach_port_extract_member_trap,
     'MSC_mach_port_construct_trap': handle_msc_mach_port_construct_trap,
     'MSC_mach_port_destruct_trap': handle_msc_mach_port_destruct_trap,
+    'MSC_mach_reply_port': handle_msc_mach_reply_port,
+    'MSC_thread_self_trap': handle_msc_thread_self_trap,
+    'MSC_task_self_trap': handle_msc_task_self_port,
     'MSC_host_self_trap': handle_msc_host_self_port,
     'MSC_semaphore_signal_trap': handle_msc_semaphore_signal_trap,
     'MSC_semaphore_wait_trap': handle_msc_semaphore_wait_trap,
     'MSC_semaphore_timedwait_trap': handle_msc_semaphore_timedwait_trap,
     'MSC_mach_port_get_attributes_trap': handle_msc_mach_port_get_attributes_trap,
     'MSC_mach_port_guard_trap': handle_msc_mach_port_guard_trap,
+    'MSC_mach_port_unguard_trap': handle_msc_mach_port_unguard_trap,
     'MSC_mach_generate_activity_id': handle_msc_mach_generate_activity_id,
     'MSC_mach_msg2_trap': handle_msc_mach_msg2_trap,
     'MSC_thread_get_special_reply_port': handle_msc_thread_get_special_reply_port,
@@ -1165,6 +1304,7 @@ handlers = {
     'MSC_host_create_mach_voucher_trap': handle_msc_host_create_mach_voucher_trap,
     'MSC_mach_port_type_trap': handle_msc_mach_port_type_trap,
     'MSC_mach_port_request_notification_trap': handle_msc_mach_port_request_notification_trap,
+    'MSC_mach_timebase_info': handle_msc_mach_timebase_info,
     'MSC_mach_wait_until': handle_msc_mach_wait_until,
     'MSC_mk_timer_create': handle_msc_mk_timer_create,
     'MSC_mk_timer_destroy': handle_msc_mk_timer_destroy,
@@ -1172,6 +1312,8 @@ handlers = {
     'MSC_mk_timer_cancel': handle_msc_mk_timer_cancel,
     'MSC_mk_timer_arm_leeway': handle_msc_mk_timer_arm_leeway,
     'MSC_iokit_user_client': handle_msc_iokit_user_client,
+    'MACH_thread_set_voucher': handle_mach_thread_set_voucher,
+    'MACH_Pageout': handle_mach_pageout,
     'MACH_vmfault': handle_mach_vmfault,
     'RealFaultAddressInternal': partial(handle_real_fault_address, RealFaultAddressInternal),
     'RealFaultAddressExternal': partial(handle_real_fault_address, RealFaultAddressExternal),
