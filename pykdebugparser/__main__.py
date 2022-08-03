@@ -1,5 +1,8 @@
+import json
+
 import click
 
+from pykdebugparser.kd_buf_parser import KdBufParser
 from pykdebugparser.pykdebugparser import PyKdebugParser
 
 
@@ -89,6 +92,30 @@ def callstacks(kdebug_dump, count, tid, process, show_tid):
     parser.filter_process = process
     parser.show_tid = show_tid
     print_with_count(parser.formatted_callstacks(kdebug_dump), count)
+
+
+@cli.command()
+@dump_input
+def processes(kdebug_dump):
+    parser = KdBufParser({}, {})
+    list(parser.parse(kdebug_dump))
+    print(json.dumps(parser.processes, indent=4))
+
+
+@cli.command()
+@dump_input
+def kexts(kdebug_dump):
+    parser = KdBufParser({}, {})
+    list(parser.parse(kdebug_dump))
+    print(json.dumps(parser.kernel_extensions, indent=4))
+
+
+@cli.command()
+@dump_input
+def images(kdebug_dump):
+    parser = KdBufParser({}, {})
+    list(parser.parse(kdebug_dump))
+    print(json.dumps(parser.images, indent=4))
 
 
 @cli.command()
