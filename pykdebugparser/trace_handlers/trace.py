@@ -152,7 +152,8 @@ def handle_trace_string_global(parser, events):
 
         if event.func_qualifier & DgbFuncQual.DBG_FUNC_END.value:
             break
-    event = TraceStringGlobal(lookup_events, debugid, str_id, vstr.replace(b'\x00', b'').decode())
+    event = TraceStringGlobal(lookup_events, debugid, str_id,
+                              vstr.replace(b'\x00', b'').decode(errors='backslashreplace'))
     if event.vstr:
         parser.global_strings[event.str_id] = event.vstr
     return event
