@@ -189,6 +189,8 @@ class PriorityWhich(enum.Enum):
     PRIO_DARWIN_PROCESS = 4
     PRIO_DARWIN_GPU = 5
     PRIO_DARWIN_ROLE = 6
+    PRIO_DARWIN_GAME_MODE = 7
+    PRIO_DARWIN_CARPLAY_MODE = 8
 
 
 class SocketOptionName(enum.Enum):
