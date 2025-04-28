@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pykdebugparser"
-version = "1.2.5"
+version = "1.2.6"
 description = "Python parser for kdebug events"
 readme.file = "README.md"
 readme.content-type = "text/markdown"
