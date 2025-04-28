@@ -4,18 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pykdebugparser"
-version = "1.2.4"
+version = "1.2.5"
 description = "Python parser for kdebug events"
 readme.file = "README.md"
 readme.content-type = "text/markdown"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 license = {file = "LICENSE"}
 authors = [
   {email = "matan1008@gmail.com"},
   {name = "Matan Perelman"},
 ]
 classifiers = [
-    "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
