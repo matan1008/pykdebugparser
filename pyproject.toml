@@ -39,9 +39,8 @@ testing = ["pytest"]
 [project.scripts]
 pykdebugparser = "pykdebugparser.__main__:cli"
 
-
-[tool.setuptools.packages]
-find = {}
+[tool.setuptools.packages.find]
+exclude = ["tests*"]
 
 [tool.setuptools.package-data]
 pykdebugparser = ["*.txt", "*.TXT", "*.codes"]
