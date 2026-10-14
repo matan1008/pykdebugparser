@@ -21,8 +21,12 @@ class SamplerAction(Enum):
     SAMPLER_TK_INFO = 0x2000
 
 
+# Pairs of (member, value), accessing `.value` through the enum descriptor is slow.
+_SAMPLER_ACTION_VALUES = [(m, m.value) for m in SamplerAction]
+
+
 def to_sampler_action(flags: int):
-    return [s for s in SamplerAction if s.value & flags]
+    return [s for s, value in _SAMPLER_ACTION_VALUES if value & flags]
 
 
 class KperfTiState(Enum):
@@ -35,8 +39,11 @@ class KperfTiState(Enum):
     KPERF_TI_IDLE = 0x40
 
 
+_KPERF_TI_STATE_VALUES = [(m, m.value) for m in KperfTiState]
+
+
 def to_kperf_ti_state(flags: int):
-    return [s for s in KperfTiState if s.value & flags]
+    return [s for s, value in _KPERF_TI_STATE_VALUES if value & flags]
 
 
 class CallstackFlag(Enum):
@@ -51,8 +58,11 @@ class CallstackFlag(Enum):
     CALLSTACK_FIXUP_PC = 0x100
 
 
+_CALLSTACK_FLAG_VALUES = [(m, m.value) for m in CallstackFlag]
+
+
 def to_callstack_flags(flags: int):
-    return [c for c in CallstackFlag if c.value & flags]
+    return [c for c, value in _CALLSTACK_FLAG_VALUES if value & flags]
 
 
 @dataclass

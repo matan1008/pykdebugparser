@@ -6,10 +6,12 @@ import plistlib
 from construct import Adapter, Struct, Const, Padding, Int32ul, Int64ul, Array, GreedyRange, Byte, FixedSized, \
     CString, Prefixed, GreedyBytes, Aligned, Bytes, Select
 
-from pykdebugparser.kevent import from_kd_buf, KD_BUF_FORMAT
+from pykdebugparser.kevent import from_kd_buf, from_kd_bufs, KD_BUF_FORMAT
 from pykdebugparser.os_log_event import OsLogEvent
 
 KEVENT_SIZE = struct.calcsize(KD_BUF_FORMAT)
+# Upper bound for a single bulk read of kevents.
+KEVENTS_READ_SIZE = KEVENT_SIZE * 1024
 
 ProcessData = namedtuple('ProcessData', ['pid', 'name'])
 
@@ -140,11 +142,33 @@ class KdBufParser:
         """
         parsed_header = kd_header_v2.parse_stream(reader)
         self.set_thread_map(parsed_header.threadmap)
+        read1 = getattr(reader, 'read1', None)
+        if read1 is None:
+            # Without `read1` a bigger `read` might block until more data than currently available arrives.
+            while True:
+                buf = reader.read(KEVENT_SIZE)
+                if not buf:
+                    break
+                yield from_kd_buf(buf)
+            return
+        # `read1` returns whatever is available, so kevents are decoded in bulk without delaying live streams.
+        leftover = b''
         while True:
-            buf = reader.read(KEVENT_SIZE)
+            buf = read1(KEVENTS_READ_SIZE)
             if not buf:
                 break
-            yield from_kd_buf(buf)
+            if leftover:
+                buf = leftover + buf
+            end = len(buf) - len(buf) % KEVENT_SIZE
+            if end != len(buf):
+                leftover = buf[end:]
+                buf = buf[:end]
+            else:
+                leftover = b''
+            yield from from_kd_bufs(buf)
+        if leftover:
+            # A truncated kevent, fail just like a non-bulk read would.
+            yield from_kd_buf(leftover)
 
     def parse_v3(self, reader: io.IOBase):
         """

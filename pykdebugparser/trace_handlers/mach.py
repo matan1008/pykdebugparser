@@ -31,11 +31,15 @@ class AsynchronousSystemTrapsReason(Enum):
     AST_UNQUIESCE = 0x200000
 
 
+# Pairs of (member, value), accessing `.value` through the enum descriptor is slow.
+_ASYNCHRONOUS_SYSTEM_TRAPS_REASON_VALUES = [(m, m.value) for m in AsynchronousSystemTrapsReason]
+
+
 def to_ast_reasons(flags: int):
     if not flags:
         return [AsynchronousSystemTrapsReason.AST_NONE]
     else:
-        return [r for r in AsynchronousSystemTrapsReason if r.value & flags]
+        return [r for r, value in _ASYNCHRONOUS_SYSTEM_TRAPS_REASON_VALUES if value & flags]
 
 
 # osfmk/arm64/proc_reg.h
@@ -86,8 +90,11 @@ class ThreadState(Enum):
     TH_IDLE = 0x80
 
 
+_THREAD_STATE_VALUES = [(m, m.value) for m in ThreadState]
+
+
 def to_thread_state(flags: int):
-    return [s for s in ThreadState if s.value & flags]
+    return [s for s, value in _THREAD_STATE_VALUES if value & flags]
 
 
 class InterruptType(Enum):
@@ -134,11 +141,14 @@ class VmProtection(Enum):
     VM_PROT_STRIP_READ = 0x80
 
 
+_VM_PROTECTION_VALUES = [(m, m.value) for m in VmProtection]
+
+
 def to_vm_prot(flags: int):
     if not flags:
         return [VmProtection.VM_PROT_NONE]
     else:
-        return [p for p in VmProtection if p.value & flags]
+        return [p for p, value in _VM_PROTECTION_VALUES if value & flags]
 
 
 # osfmk/mach/port.h
