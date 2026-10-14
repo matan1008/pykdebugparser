@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List
 
+from pykdebugparser.trace_handlers import parse_enum
+
 
 class TurnstileType(Enum):
     TURNSTILE_NONE = 0
@@ -232,11 +234,11 @@ def handle_thread_user_promotion_change(parser, events):
 
 
 def handle_turnstile_turnstile_prepare(parser, events):
-    return TurnstilePrepare(events, *events[0].values[:2], TurnstileType(events[0].values[2]))
+    return TurnstilePrepare(events, *events[0].values[:2], parse_enum(TurnstileType, events[0].values[2]))
 
 
 def handle_turnstile_turnstile_complete(parser, events):
-    return TurnstileComplete(events, *events[0].values[:2], TurnstileType(events[0].values[2]))
+    return TurnstileComplete(events, *events[0].values[:2], parse_enum(TurnstileType, events[0].values[2]))
 
 
 handlers = {
