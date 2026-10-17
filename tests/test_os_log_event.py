@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from pykdebugparser.os_log_event import OsLogEvent, OsLogType, FirehoseTracepointNamespace, FirehoseTracepointLogType, \
     FirehoseTracepointFlagsPcStyle, FirehoseTracepointLogFlags
 
@@ -265,3 +267,22 @@ def test_parsing_event_with_backtrace():
     )
     assert parsed_event.trace_identifier.code == 1730654
     assert parsed_event.boot_uuid == b'\x08\xcc\xed\xc6g\xb8O\xe9\xa4\xf0\xa8d\xa0\xba^\x1e'
+
+
+def test_parse_trace_identifier_flags():
+    trace_identifier = OsLogEvent.parse_trace_identifier(0x12345678_0b3d0004)
+    assert trace_identifier.namespace == FirehoseTracepointNamespace.log
+    assert trace_identifier.type_ == FirehoseTracepointLogType.default
+    assert trace_identifier.has_large_offset
+    assert trace_identifier.has_unique_pid
+    assert trace_identifier.pc_style == FirehoseTracepointFlagsPcStyle.large_shared_cache
+    assert trace_identifier.has_current_aid
+    assert trace_identifier.flags == (FirehoseTracepointLogFlags.has_private_data | FirehoseTracepointLogFlags.has_subsystem
+                                      | FirehoseTracepointLogFlags.has_oversize)
+    assert trace_identifier.code == 0x12345678
+
+
+@pytest.mark.parametrize('trace_identifier', [-1, 1 << 64])
+def test_parse_trace_identifier_out_of_range(trace_identifier):
+    with pytest.raises(ValueError):
+        OsLogEvent.parse_trace_identifier(trace_identifier)
