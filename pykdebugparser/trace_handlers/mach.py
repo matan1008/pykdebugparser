@@ -4,7 +4,11 @@ from enum import Enum
 from functools import partial
 from typing import List, Optional
 
+from pykdebugparser.trace_codes import default_trace_codes
 from pykdebugparser.trace_handlers import parse_enum
+
+# bsd/sys/kdebug.h: (DBG_MACH << 8) | DBG_MACH_EXCP_SYNC_ARM
+DBG_MACH_EXCP_SYNC_ARM = 0x103
 
 
 class AsynchronousSystemTrapsReason(Enum):
@@ -59,10 +63,13 @@ class ExceptionSyndromeRegisterClass(Enum):
     ESR_EC_TRAP_SIMD_FP = 0x07
     ESR_EC_PTRAUTH_INSTR_TRAP = 0x09
     ESR_EC_MCRR_MRRC_CP14_TRAP = 0x0c
+    ESR_EC_BTI_FAIL = 0x0d
     ESR_EC_ILLEGAL_INSTR_SET = 0x0e
     ESR_EC_SVC_32 = 0x11
     ESR_EC_SVC_64 = 0x15
+    ESR_EC_HVC_64 = 0x16
     ESR_EC_MSR_TRAP = 0x18
+    ESR_EC_PAC_FAIL = 0x1c
     ESR_EC_IABORT_EL0 = 0x20
     ESR_EC_IABORT_EL1 = 0x21
     ESR_EC_PC_ALIGN = 0x22
@@ -279,6 +286,25 @@ class KernelUncategorizedExcArm:
         except ValueError:
             pass
         return f'KernelUncategorizedExcArm, class: {esr_class}, far: {hex(self.far)}, pc: {hex(self.pc)}'
+
+
+@dataclass
+class ArmException:
+    """An arm64 synchronous exception (`sleh.c`): its ESR, fault address and PC, for the classes without their own
+    trace class (breakpoints, `brk` traps, pointer authentication failures, alignment faults, ...)."""
+    ktraces: List
+    name: str
+    esr: int
+    far: int
+    pc: int
+
+    def __str__(self):
+        esr_class = self.esr >> 26
+        try:
+            esr_class = ExceptionSyndromeRegisterClass(esr_class).name
+        except ValueError:
+            pass
+        return f'{self.name}, class: {esr_class}, far: {hex(self.far)}, pc: {hex(self.pc)}'
 
 
 @dataclass
@@ -1057,6 +1083,11 @@ def handle_user_instr_abort_lower_el_exc_arm(parser, events):
     return UserInstrAbortLowerElExcArm(events, *events[0].values[:3])
 
 
+def handle_arm_exception(parser, events):
+    args = events[0].values
+    return ArmException(events, parser.trace_codes[events[0].eventid], args[0], args[1], args[2])
+
+
 def handle_user_data_abort_lower_el_exc_arm(parser, events):
     args = events[0].values
     return UserDataAbortLowerElExcArm(events, args[0], args[1], args[2])
@@ -1416,3 +1447,6 @@ handlers = {
     'SCHED_CLUTCH_CPU_THREAD_SELECT': handle_sched_clutch_cpu_thread_select,
     'SCHED_CLUTCH_TG_BUCKET_PRI': handle_sched_clutch_tg_bucket_pri,
 }
+# Every other arm64 synchronous exception class shares the same arguments.
+handlers.update({name: handle_arm_exception for eventid, name in default_trace_codes().items()
+                 if eventid >> 16 == DBG_MACH_EXCP_SYNC_ARM and name.endswith('_Exc_ARM') and name not in handlers})

@@ -559,3 +559,37 @@ def test_mach_thread_resume(traces_parser):
     ]
     ret = list(traces_parser.feed_generator(events))
     assert str(ret[-1]) == 'thread_resume, tid: 56253'
+
+
+def test_user_brk64_exc_arm(traces_parser):
+    # A process calling __builtin_trap(), which is `brk #1`, as Swift runtime errors also stop a process.
+    events = [
+        Kevent(timestamp=8640932051229,
+               data=(b'\x01\x00\x00\xf2\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x10\x00'
+                     b'\x1f\x02\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(4060086273, 0, 4330553360, 0),
+               tid=2682865, debugid=16975089, eventid=16975088, func_qualifier=1),
+        Kevent(timestamp=8640932051506,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(0, 0, 0, 0),
+               tid=2682865, debugid=16975090, eventid=16975088, func_qualifier=2),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[0]) == 'User_Brk64_Exc_ARM, class: ESR_EC_BRK_AARCH64, far: 0x0, pc: 0x1021f0010'
+
+
+@pytest.mark.parametrize('eventid, esr, expected', [
+    (0x1030470, 0x72000000, 'User_Ptrauth_Fail_Exc_ARM, class: ESR_EC_PAC_FAIL, far: 0x0, pc: 0x100003f00'),
+])
+def test_arm_exception(traces_parser, eventid, esr, expected):
+    start = (esr, 0, 0x100003f00, 0)
+    end = (0, 0, 0, 0)
+    events = [
+        Kevent(timestamp=1000, data=struct.pack('<4Q', *start), values=start, tid=7573, debugid=eventid | 1,
+               eventid=eventid, func_qualifier=1),
+        Kevent(timestamp=2000, data=struct.pack('<4Q', *end), values=end, tid=7573, debugid=eventid | 2,
+               eventid=eventid, func_qualifier=2),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[0]) == expected
