@@ -51,6 +51,8 @@ class TracesParser:
         self.last_data_exec = None
         # Calls that never return, parsed from their start event.
         self.no_return_eventids = {eventid for eventid, name in trace_codes_map.items() if name in NO_RETURN_CALLS}
+        # Disk I/Os issued and not completed yet, by their buf address.
+        self.pending_disk_io = {}
         # Images dyld loaded, by (pid, load address), and the load address of each thread's last `DYLD_uuid_*_a` event.
         self.dyld_images = {}
         self.dyld_pending_load_addr = {}
