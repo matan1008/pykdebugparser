@@ -1,4 +1,6 @@
+import dataclasses
 from datetime import datetime
+from enum import Enum
 import io
 import math
 
@@ -9,6 +11,7 @@ from pykdebugparser.highlight import highlight
 from pykdebugparser.kd_buf_parser import KdBufParser
 from pykdebugparser.kevent import DgbFuncQual
 from pykdebugparser.trace_codes import default_trace_codes
+from pykdebugparser.trace_handlers import UnknownEnumValue
 from pykdebugparser.trace_handlers.trace import TRACE_LOST_EVENTS
 from pykdebugparser.traces_parser import TracesParser
 from pykdebugparser.os_log_event import OsLogEvent
@@ -17,6 +20,32 @@ from pykdebugparser.os_log_event import OsLogEvent
 DBG_TRACE = 7
 DBG_FSYSTEM = 3
 DBG_BSD = 4
+
+
+def _fields(trace) -> dict:
+    """A trace's parsed values (its dataclass fields but the raw kevents), as JSON-compatible values."""
+    return {field.name: _jsonable(getattr(trace, field.name)) for field in dataclasses.fields(trace)
+            if field.name != 'ktraces'}
+
+
+def _jsonable(value):
+    if isinstance(value, (bool, str)) or value is None:
+        return value
+    if isinstance(value, UnknownEnumValue):
+        return int(value)
+    if isinstance(value, Enum):
+        return value.name
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        return value.hex()
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return _fields(value)
+    return str(value)
 
 
 class PyKdebugParser:
@@ -99,6 +128,32 @@ class PyKdebugParser:
             trace_generator = filter(lambda t: t.ktraces[0].eventid >> 24 != DBG_FSYSTEM, trace_generator)
         return trace_generator
 
+    def dict_traces(self, kdebug: io.IOBase, trace_codes=None):
+        """The traces as JSON-compatible dicts (see `trace_dict`)."""
+        trace_codes_map = default_trace_codes() if trace_codes is None else trace_codes
+        return map(lambda t: self.trace_dict(t, trace_codes_map), self.traces(kdebug, trace_codes_map))
+
+    def trace_dict(self, trace, trace_codes=None) -> dict:
+        """
+        A trace as JSON-compatible data: when (`timestamp` in mach ticks, and `time` in ISO 8601 when the device's time
+        information is set), where (`tid`, `pid`, `process`), what (`event`, the trace code name of its first kevent,
+        and `fields`, the parsed values) and `text`, as `formatted_traces` prints it.
+        """
+        trace_codes_map = default_trace_codes() if trace_codes is None else trace_codes
+        first = trace.ktraces[0]
+        pid = self.threads_pids.get(first.tid)
+        posix_time = self._posix_time(first.timestamp)
+        return {
+            'timestamp': first.timestamp,
+            'time': None if posix_time is None else datetime.fromtimestamp(posix_time, tz=self.timezone).isoformat(),
+            'tid': first.tid,
+            'pid': pid,
+            'process': self.pids_names.get(pid, '') if pid is not None else '',
+            'event': trace_codes_map.get(first.eventid, hex(first.eventid)),
+            'fields': _fields(trace),
+            'text': str(trace),
+        }
+
     def formatted_traces(self, kdebug: io.IOBase, trace_codes=None):
         return map(lambda t: self._format_trace(t), self.traces(kdebug, trace_codes))
 
@@ -128,13 +183,19 @@ class PyKdebugParser:
         process_name = self.pids_names.get(pid, '')
         return self.filter_process == str(pid) or self.filter_process == process_name
 
-    def _format_timestamp(self, timestamp):
+    def _posix_time(self, timestamp):
+        """A kevent timestamp (mach ticks) as POSIX time, or None without the device's time information."""
         if None in (self.mach_absolute_time, self.numer, self.denom, self.usecs_since_epoch, self.timezone):
-            return str(timestamp) + ' '
+            return None
         offset_usec = (
                 ((timestamp - self.mach_absolute_time) * self.numer) / (self.denom * 1000)
         )
-        posix_time = (self.usecs_since_epoch + offset_usec) / 1000000
+        return (self.usecs_since_epoch + offset_usec) / 1000000
+
+    def _format_timestamp(self, timestamp):
+        posix_time = self._posix_time(timestamp)
+        if posix_time is None:
+            return str(timestamp) + ' '
         # Split to seconds and microseconds exactly like `datetime.fromtimestamp` does (round half to even), so
         # the date and time part can be formatted only once per second.
         fraction, seconds = math.modf(posix_time)
