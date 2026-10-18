@@ -2,7 +2,7 @@ import ctypes
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
-from typing import List
+from typing import List, Optional
 
 from pykdebugparser.trace_handlers import parse_enum
 
@@ -595,6 +595,46 @@ class SemaphoreTimedwait:
 
 
 @dataclass
+class TaskNameForPid:
+    ktraces: List
+    target_tport: int
+    pid: int
+    tn: int
+    result: KernReturn
+
+    def __str__(self):
+        return f'task_name_for_pid({self.target_tport}, {self.pid}, {hex(self.tn)}), result: {self.result.name}'
+
+
+@dataclass
+class PidForTask:
+    ktraces: List
+    task: int
+    pid_addr: int
+    result: KernReturn
+
+    def __str__(self):
+        return f'pid_for_task({self.task}, {hex(self.pid_addr)}), result: {self.result.name}'
+
+
+@dataclass
+class TaskSuspension:
+    """A task or thread suspended (by `task_suspend`, a debugger, ...) or resumed (osfmk `DBG_MACH_SUSPENSION`)."""
+    ktraces: List
+    name: str
+    target: str
+    target_id: int
+    user_stop_count: Optional[int] = None
+    pidsuspended: Optional[int] = None
+
+    def __str__(self):
+        rep = f'{self.name}, {self.target}: {self.target_id}'
+        if self.user_stop_count is not None:
+            rep += f', user_stop_count: {self.user_stop_count}, pidsuspended: {bool(self.pidsuspended)}'
+        return rep
+
+
+@dataclass
 class MachPortGetAttributes:
     ktraces: List
     target: int
@@ -1057,6 +1097,35 @@ def handle_msc_mach_vm_map_trap(parser, events):
     return MachVmMap(events, *events[0].values)
 
 
+def handle_msc_task_name_for_pid(parser, events):
+    args = events[0].values
+    return TaskNameForPid(events, args[0] & 0xffffffff, ctypes.c_int32(args[1]).value, args[2],
+                          parse_enum(KernReturn, events[-1].values[0]))
+
+
+def handle_msc_pid_for_task(parser, events):
+    args = events[0].values
+    return PidForTask(events, args[0] & 0xffffffff, args[1], parse_enum(KernReturn, events[-1].values[0]))
+
+
+def handle_task_suspend(parser, events):
+    args = events[0].values
+    return TaskSuspension(events, 'task_suspend', 'pid', args[0], args[1], args[2])
+
+
+def handle_task_resume(parser, events):
+    return TaskSuspension(events, 'task_resume', 'pid', events[0].values[0])
+
+
+def handle_thread_suspend(parser, events):
+    args = events[0].values
+    return TaskSuspension(events, 'thread_suspend', 'tid', args[0], args[1], args[2])
+
+
+def handle_thread_resume(parser, events):
+    return TaskSuspension(events, 'thread_resume', 'tid', events[0].values[0])
+
+
 def handle_msc_mach_port_allocate_trap(parser, events):
     args = events[0].values
     return MachPortAllocate(events, args[0], parse_enum(MachPortRight, args[1]), args[2])
@@ -1306,6 +1375,12 @@ handlers = {
     'MSC_semaphore_signal_trap': handle_msc_semaphore_signal_trap,
     'MSC_semaphore_wait_trap': handle_msc_semaphore_wait_trap,
     'MSC_semaphore_timedwait_trap': handle_msc_semaphore_timedwait_trap,
+    'MSC_task_name_for_pid': handle_msc_task_name_for_pid,
+    'MSC_pid_for_task': handle_msc_pid_for_task,
+    'MACH_task_suspend': handle_task_suspend,
+    'MACH_task_resume': handle_task_resume,
+    'MACH_thread_suspend': handle_thread_suspend,
+    'MACH_thread_resume': handle_thread_resume,
     'MSC_mach_port_get_attributes_trap': handle_msc_mach_port_get_attributes_trap,
     'MSC_mach_port_guard_trap': handle_msc_mach_port_guard_trap,
     'MSC_mach_port_unguard_trap': handle_msc_mach_port_unguard_trap,

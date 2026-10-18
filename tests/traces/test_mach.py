@@ -477,3 +477,85 @@ def test_mk_timer_arm_leeway_unknown_flags(traces_parser):
     trace = list(traces_parser.feed_generator(_mk_timer_arm_leeway_events(3)))[0]
     assert trace.mk_timer_flags == 3
     assert str(trace) == 'mk_timer_arm_leeway(0x1234, 3, 1000, 50)'
+
+
+def test_msc_task_name_for_pid(traces_parser):
+    events = [
+        Kevent(timestamp=72653256756,
+               data=(b'\x03\x02\x00\x00\x00\x00\x00\x00\x17\x04\x00\x00\x00\x00\x00\x00Ha'
+                     b'\x98\x03\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(515, 1047, 4355285320, 0),
+               tid=55020, debugid=17563825, eventid=17563824, func_qualifier=1),
+        Kevent(timestamp=72653256862,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(0, 0, 0, 0),
+               tid=55020, debugid=17563826, eventid=17563824, func_qualifier=2),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'task_name_for_pid(515, 1047, 0x103986148), result: KERN_SUCCESS'
+
+
+def test_msc_pid_for_task(traces_parser):
+    events = [
+        Kevent(timestamp=73041411256,
+               data=(b'\x03\x02\x00\x00\x00\x00\x00\x004XX\x08\x01\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(515, 4434974772, 0, 0),
+               tid=56650, debugid=17563833, eventid=17563832, func_qualifier=1),
+        Kevent(timestamp=73041411262,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(0, 0, 0, 0),
+               tid=56650, debugid=17563834, eventid=17563832, func_qualifier=2),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'pid_for_task(515, 0x108585834), result: KERN_SUCCESS'
+
+
+def test_mach_task_suspend(traces_parser):
+    events = [
+        Kevent(timestamp=72675649456,
+               data=(b'\xe7\x04\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x01\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(1255, 1, 1, 0),
+               tid=53595, debugid=18939904, eventid=18939904, func_qualifier=0),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'task_suspend, pid: 1255, user_stop_count: 1, pidsuspended: True'
+
+
+def test_mach_task_resume(traces_parser):
+    events = [
+        Kevent(timestamp=72898482433,
+               data=(b'\xfd\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(253, 0, 0, 0),
+               tid=56372, debugid=18939908, eventid=18939908, func_qualifier=0),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'task_resume, pid: 253'
+
+
+def test_mach_thread_suspend(traces_parser):
+    events = [
+        Kevent(timestamp=72675649478,
+               data=(b'\xbc\xda\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(55996, 0, 1, 0),
+               tid=53595, debugid=18939912, eventid=18939912, func_qualifier=0),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'thread_suspend, tid: 55996, user_stop_count: 0, pidsuspended: True'
+
+
+def test_mach_thread_resume(traces_parser):
+    events = [
+        Kevent(timestamp=72700977479,
+               data=(b'\xbd\xdb\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(56253, 0, 0, 0),
+               tid=56171, debugid=18939916, eventid=18939916, func_qualifier=0),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'thread_resume, tid: 56253'
