@@ -435,7 +435,7 @@ def test_wait4(traces_parser):
                tid=2324735, debugid=67895326, eventid=67895324, func_qualifier=2),
     ]
     ret = list(traces_parser.feed_generator(events))
-    assert str(ret[-1]) == 'wait4(4294967295, 0x16b5fe3ec, 1, 0x0), pid: 48648'
+    assert str(ret[-1]) == 'wait4(-1, 0x16b5fe3ec, 1, 0x0), pid: 48648'
 
 
 @pytest.mark.parametrize('name, args, end, expected', [
@@ -549,7 +549,7 @@ def test_pthread_kill(traces_parser):
                tid=2694815, debugid=67896610, eventid=67896608, func_qualifier=2),
     ]
     ret = list(traces_parser.feed_generator(events))
-    assert str(ret[-1]) == 'pthread_kill(259, 30)'
+    assert str(ret[-1]) == 'pthread_kill(259, SIGUSR1)'
 
 
 def test_sigreturn(traces_parser):
@@ -567,3 +567,22 @@ def test_sigreturn(traces_parser):
     ]
     ret = list(traces_parser.feed_generator(events))
     assert str(ret[-1]) == 'sigreturn(0x16bd56ec8, 30, 0x17fcd6aa5d512e6c), errno: EJUSTRETURN(-2)'
+
+
+@pytest.mark.parametrize('eventid, start, end, expected', [
+    # launchd signaling a process group, as `kill(-pgid, sig)` does: pid_t is a C int.
+    (0x40c0094, (4294965818, 15, 1, 0), (1, 0, 0, 0), 'kill(-1478, SIGTERM), errno: EPERM(1)'),
+    # Signal 0 only checks that the process exists.
+    (0x40c0094, (97998, 0, 0, 0), (0, 0, 0, 0), 'kill(97998, 0)'),
+    (0x40c0148, (0, 0, 0, 0), (0, 0, 0, 0), 'setpgid(0, 0)'),
+    (0x40c025c, (4294967295, 0, 0, 0), (3, 0, 0, 0), 'getpgid(-1), errno: ESRCH(3)'),
+])
+def test_signed_pid(traces_parser, eventid, start, end, expected):
+    events = [
+        Kevent(timestamp=1000, data=struct.pack('<4Q', *start), values=start, tid=1, debugid=eventid | 1,
+               eventid=eventid, func_qualifier=1),
+        Kevent(timestamp=2000, data=struct.pack('<4Q', *end), values=end, tid=1, debugid=eventid | 2,
+               eventid=eventid, func_qualifier=2),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[0]) == expected
