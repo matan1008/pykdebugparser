@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import json
 from io import BytesIO
 import struct
 
@@ -179,3 +180,67 @@ def test_traces_keep_lost_events_when_filtered():
     traces = list(parser.formatted_traces(BytesIO(events_buf)))
     assert len(traces) == 1
     assert traces[0].endswith('TRACE_LOST_EVENTS: the kernel dropped trace events here')
+
+
+def test_dict_traces():
+    events = [
+        _kd_buf(1000, 0x40c0014 | 1, (0x16d2c2b80, 0, 0, 0)),  # open start
+        _kd_buf(2000, 0x40c0014 | 2, (2, 0, 0, 0)),  # open end: ENOENT
+    ]
+    events_buf = RAW_VERSION2_BYTES + b'\x00' * 0x11c + b''.join(events)
+    parser = _traces_parser()
+    (unknown_process,) = parser.dict_traces(BytesIO(events_buf))
+    assert (unknown_process['pid'], unknown_process['process']) == (None, '')
+    # The thread's process, once the trace has seen it.
+    (parsed,) = parser.traces(BytesIO(events_buf))
+    parser.threads_pids[100] = 42
+    parser.pids_names[42] = 'probe'
+    trace = parser.trace_dict(parsed)
+    assert trace == {
+        'timestamp': 1000,
+        'time': '1970-01-01T00:00:00.000001+00:00',
+        'tid': 100,
+        'pid': 42,
+        'process': 'probe',
+        'event': 'BSC_open',
+        'fields': trace['fields'],
+        'text': trace['text'],
+    }
+    assert trace['text'].startswith('open(') and trace['text'].endswith('errno: ENOENT(2)')
+    assert json.loads(json.dumps(trace)) == trace  # JSON-compatible: enums by name, flags as lists of names
+
+
+def test_trace_dict_values():
+    from enum import Enum
+    from dataclasses import dataclass
+    from uuid import UUID
+    from pykdebugparser.trace_handlers import UnknownEnumValue
+
+    class Color(Enum):
+        RED = 1
+
+    @dataclass
+    class Inner:
+        ktraces: list
+        value: int
+
+    @dataclass
+    class Trace:
+        ktraces: list
+        color: Color
+        unknown: UnknownEnumValue
+        flags: list
+        uuid: UUID
+        data: bytes
+        inner: Inner
+
+    event = Kevent(timestamp=5, data=b'\x00' * 32, values=(0, 0, 0, 0), tid=7, debugid=0x40c0015, eventid=0x40c0014,
+                   func_qualifier=1)
+    trace = Trace([event], Color.RED, UnknownEnumValue(9), [Color.RED], UUID(int=1), b'\x01\x02', Inner([event], 3))
+    parser = PyKdebugParser()
+    assert parser.trace_dict(trace)['fields'] == {
+        'color': 'RED', 'unknown': 9, 'flags': ['RED'], 'uuid': '00000000-0000-0000-0000-000000000001',
+        'data': '0102', 'inner': {'value': 3},
+    }
+    # Without the device's time information there is no wall-clock time.
+    assert parser.trace_dict(trace)['time'] is None
