@@ -20,6 +20,8 @@ ProcessData = namedtuple('ProcessData', ['pid', 'name'])
 RAW_VERSION_SIZE = 4
 RAW_VERSION2_BYTES = b'\x00\x02\xaa\x55'
 RAW_VERSION3_BYTES = b'\x00\x03\xaa\x55'
+# Header flag of a 64-bit kernel.
+KDBG_LP64 = 0x1
 TRACEV3_STACKSHOT_END = b'stackshot_out_fl'
 TRACEV3_THREADMAP_TAG = b'\x00\x1d\x00\x00\x00\x00\x00\x00'
 TRACEV3_EVENTS_TAG = b'\x00\x1e\x00\x00\x00\x00\x00\x00'
@@ -54,11 +56,21 @@ class KdThreadmap(BinaryStruct, byte_order='<'):
 
 @dataclass
 class KdHeaderV2(BinaryStruct, byte_order='<'):
+    """
+    Header of a trace version 2 (`RAW_VERSION2`), as written by kperf's `kperf_buffer_readdata`.
+    The fields up to `tod_usecs` follow XNU's `RAW_header`; kperf always writes the time of day as zero.
+    """
     number_of_threads: u32
-    _reserved0: Annotated[bytes, Bytes(12)] = field(default=bytes(12), init=False, repr=False, compare=False)
-    is_64bit: u32
+    tod_secs: u64
+    tod_usecs: u32
+    flags: u32
     tick_frequency: u64
-    _reserved1: Annotated[bytes, Bytes(0x100)] = field(default=bytes(0x100), init=False, repr=False, compare=False)
+    # Never written by kperf, so it holds whatever the buffer contained before.
+    _unused: Annotated[bytes, Bytes(0x100)] = field(default=bytes(0x100), init=False, repr=False, compare=False)
+
+    @property
+    def is_64bit(self) -> bool:
+        return bool(self.flags & KDBG_LP64)
 
 
 @dataclass

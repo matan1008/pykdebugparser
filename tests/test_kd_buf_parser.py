@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from pykdebugparser.kd_buf_parser import KdBufParser, KdHeaderV3, RAW_VERSION2_BYTES, RAW_VERSION3_BYTES
+from pykdebugparser.kd_buf_parser import KdBufParser, KdHeaderV2, KdHeaderV3, RAW_VERSION2_BYTES, RAW_VERSION3_BYTES
 from pykdebugparser.os_log_event import OsLogEvent
 
 THREADMAP = [(0x1001, 100, b'launchd'), (0x1002, 200, b'SpringBoard'), (0x1003, 200, b'x' * 19)]
@@ -19,8 +19,13 @@ def threadmap_bytes():
     return b''.join(struct.pack('<QI20s', tid, pid, name) for tid, pid, name in THREADMAP)
 
 
+def v2_header(flags=1):
+    # kperf leaves the unused tail of the header uninitialized.
+    return struct.pack('<IQIIQ', len(THREADMAP), 0, 0, flags, 24000000) + bytes(range(0x100))
+
+
 def v2_buf(padding, events):
-    header = RAW_VERSION2_BYTES + struct.pack('<I8x4xIQ256x', len(THREADMAP), 1, 24000000) + threadmap_bytes()
+    header = RAW_VERSION2_BYTES + v2_header() + threadmap_bytes()
     return header + b'\x00' * padding + b''.join(events)
 
 
@@ -50,6 +55,14 @@ def test_parse_v2_threadmap(reader_type, padding):
     assert [(e.timestamp, e.tid) for e in events] == [(0x101, 0x1001), (0x202, 0x1002)]
     assert parser.threads_pids == {0x1001: 100, 0x1002: 200, 0x1003: 200}
     assert parser.pids_names == {100: 'launchd', 200: 'x' * 19}
+
+
+@pytest.mark.parametrize('flags, is_64bit', [(0, False), (1, True)])
+def test_kd_header_v2(flags, is_64bit):
+    header = KdHeaderV2.parse(v2_header(flags))
+    assert header == KdHeaderV2(number_of_threads=len(THREADMAP), tod_secs=0, tod_usecs=0, flags=flags,
+                                tick_frequency=24000000)
+    assert header.is_64bit is is_64bit
 
 
 def test_parse_v2_truncated_threadmap():
