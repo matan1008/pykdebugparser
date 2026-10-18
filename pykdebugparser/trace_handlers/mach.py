@@ -621,6 +621,18 @@ class SemaphoreTimedwait:
 
 
 @dataclass
+class TaskForPid:
+    ktraces: List
+    target_tport: int
+    pid: int
+    t: int
+    result: KernReturn
+
+    def __str__(self):
+        return f'task_for_pid({self.target_tport}, {self.pid}, {hex(self.t)}), result: {self.result.name}'
+
+
+@dataclass
 class TaskNameForPid:
     ktraces: List
     target_tport: int
@@ -1128,6 +1140,12 @@ def handle_msc_mach_vm_map_trap(parser, events):
     return MachVmMap(events, *events[0].values)
 
 
+def handle_msc_task_for_pid(parser, events):
+    args = events[0].values
+    return TaskForPid(events, args[0] & 0xffffffff, ctypes.c_int32(args[1]).value, args[2],
+                      parse_enum(KernReturn, events[-1].values[0]))
+
+
 def handle_msc_task_name_for_pid(parser, events):
     args = events[0].values
     return TaskNameForPid(events, args[0] & 0xffffffff, ctypes.c_int32(args[1]).value, args[2],
@@ -1406,6 +1424,7 @@ handlers = {
     'MSC_semaphore_signal_trap': handle_msc_semaphore_signal_trap,
     'MSC_semaphore_wait_trap': handle_msc_semaphore_wait_trap,
     'MSC_semaphore_timedwait_trap': handle_msc_semaphore_timedwait_trap,
+    'MSC_task_for_pid': handle_msc_task_for_pid,
     'MSC_task_name_for_pid': handle_msc_task_name_for_pid,
     'MSC_pid_for_task': handle_msc_pid_for_task,
     'MACH_task_suspend': handle_task_suspend,

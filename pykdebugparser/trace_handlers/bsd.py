@@ -378,11 +378,18 @@ def serialize_stat_flags(flags: int) -> List[StatFlags]:
     return stat_flags
 
 
+# bsd/sys/errno.h: codes the kernel uses internally, which a syscall end event can carry.
+KERNEL_ERRNOS = {-1: 'ERESTART', -2: 'EJUSTRETURN'}
+
+
 def serialize_result(end_event, success_name='', fmt=lambda x: x) -> str:
     error_code = end_event.values[0]
     res = end_event.values[1]
+    signed = ctypes.c_int64(error_code).value
     if error_code in errno.errorcode:
         err = f'errno: {errno.errorcode[error_code]}({error_code})'
+    elif signed in KERNEL_ERRNOS:
+        err = f'errno: {KERNEL_ERRNOS[signed]}({signed})'
     else:
         err = f'errno: {error_code}'
     success = f'{success_name}: {fmt(res)}' if success_name else ''
@@ -3020,6 +3027,35 @@ class BscSync:
 
 
 @dataclass
+class BscPthreadKill:
+    ktraces: List
+    thread_port: int
+    sig: int
+    result: str
+
+    def __str__(self):
+        rep = f'pthread_kill({self.thread_port}, {self.sig})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscSigreturn:
+    ktraces: List
+    uctx: int
+    infostyle: int
+    token: int
+    result: str
+
+    def __str__(self):
+        rep = f'sigreturn({hex(self.uctx)}, {self.infostyle}, {hex(self.token)})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
 class BscKill:
     ktraces: List
     pid: int
@@ -5501,6 +5537,16 @@ def handle_sync(parser, events):
     return BscSync(events)
 
 
+def handle_pthread_kill(parser, events):
+    args = events[0].values
+    return BscPthreadKill(events, args[0] & 0xffffffff, args[1], serialize_result(events[-1]))
+
+
+def handle_sigreturn(parser, events):
+    args = events[0].values
+    return BscSigreturn(events, args[0], args[1], args[2], serialize_result(events[-1]))
+
+
 def handle_kill(parser, events):
     return BscKill(events, events[0].values[0], events[0].values[1], serialize_result(events[-1]))
 
@@ -7196,6 +7242,8 @@ handlers = {
     'BSC_fchflags': handle_fchflags,
     'BSC_sync': handle_sync,
     'BSC_kill': handle_kill,
+    'BSC_pthread_kill': handle_pthread_kill,
+    'BSC_sigreturn': handle_sigreturn,
     'BSC_getppid': handle_getppid,
     'BSC_sys_dup': handle_sys_dup,
     'BSC_pipe': handle_pipe,

@@ -593,3 +593,20 @@ def test_arm_exception(traces_parser, eventid, esr, expected):
     ]
     ret = list(traces_parser.feed_generator(events))
     assert str(ret[0]) == expected
+
+
+def test_msc_task_for_pid(traces_parser):
+    events = [
+        Kevent(timestamp=8676671099883,
+               data=(b'\x03\x02\x00\x00\x00\x00\x00\x00\xcd~\x01\x00\x00\x00\x00\x00\xfcr'
+                     b'\xd5k\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(515, 97997, 6104118012, 0),
+               tid=2694815, debugid=17563829, eventid=17563828, func_qualifier=1),
+        Kevent(timestamp=8676671100697,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(0, 0, 0, 0),
+               tid=2694815, debugid=17563830, eventid=17563828, func_qualifier=2),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'task_for_pid(515, 97997, 0x16bd572fc), result: KERN_SUCCESS'

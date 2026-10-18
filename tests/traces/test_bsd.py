@@ -533,3 +533,37 @@ def test_proc_exit_status(traces_parser, status, expected):
     ]
     ret = list(traces_parser.feed_generator(events))
     assert str(ret[0]) == expected
+
+
+def test_pthread_kill(traces_parser):
+    events = [
+        Kevent(timestamp=8676671100749,
+               data=(b'\x03\x01\x00\x00\x00\x00\x00\x00\x1e\x00\x00\x00\x00\x00\x00\x00\xfcr'
+                     b'\xd5k\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00'),
+               values=(259, 30, 6104118012, 1),
+               tid=2694815, debugid=67896609, eventid=67896608, func_qualifier=1),
+        Kevent(timestamp=8676671100888,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\xce~\x01\x00\x00\x00\x00\x00'),
+               values=(0, 0, 0, 97998),
+               tid=2694815, debugid=67896610, eventid=67896608, func_qualifier=2),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'pthread_kill(259, 30)'
+
+
+def test_sigreturn(traces_parser):
+    events = [
+        Kevent(timestamp=8676671102970,
+               data=(b'\xc8n\xd5k\x01\x00\x00\x00\x1e\x00\x00\x00\x00\x00\x00\x00l.'
+                     b'Q]\xaa\xd6\xfc\x17`n\xd5k\x01\x00\x00\x00'),
+               values=(6104116936, 30, 1728492384201813612, 6104116832),
+               tid=2694815, debugid=67896033, eventid=67896032, func_qualifier=1),
+        Kevent(timestamp=8676671103062,
+               data=(b'\xfe\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\xce~\x01\x00\x00\x00\x00\x00'),
+               values=(18446744073709551614, 0, 0, 97998),
+               tid=2694815, debugid=67896034, eventid=67896032, func_qualifier=2),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'sigreturn(0x16bd56ec8, 30, 0x17fcd6aa5d512e6c), errno: EJUSTRETURN(-2)'
