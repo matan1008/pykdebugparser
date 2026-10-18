@@ -1,3 +1,4 @@
+import struct
 from uuid import UUID
 
 from pykdebugparser.kevent import Kevent
@@ -249,3 +250,129 @@ def test_timing_dladdr(traces_parser):
     ret = list(traces_parser.feed_generator(events))
     assert ret[0].addr == 0x18de97d28
     assert ret[0].ret == 1
+
+
+def test_timing_static_initializer(traces_parser):
+    events = [
+        Kevent(timestamp=71890778423,
+               data=(b'\x00\x00\x05\x1f\x00\x00\x00\x00Rv\x08\x00\x00\x00\xacp/u'
+                     b'sr/lib/libSyst'),
+               values=(520421376, 8118864228242716242, 7091318039310988591, 8391183929761688623),
+               tid=53821, debugid=117506049, eventid=117506048, func_qualifier=1),
+        Kevent(timestamp=71890778423,
+               data=(b'em.B.dylib\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(7816388778119818597, 25193, 0, 0),
+               tid=53821, debugid=117506050, eventid=117506048, func_qualifier=2),
+        Kevent(timestamp=71890778428,
+               data=(b"i\xa5x>6'4\xd3\xac\xe7\xef\xca9\xe6\x8a \x00\xa0"
+                     b'\x03\xce\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(15218832154721559913, 2344939691892008876, 12046278656, 0),
+               tid=53821, debugid=520421376, eventid=520421376, func_qualifier=0),
+        Kevent(timestamp=71890778432,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00Rv\x08\x00\x00\x00\xacp\x02\x00'
+                     b'\x00\x80\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(0, 8118864228242716242, 18446744071562067970, 0),
+               tid=53821, debugid=520421380, eventid=520421380, func_qualifier=0),
+        Kevent(timestamp=71890819949,
+               data=(b'\x06\x00\x00\x00\x00\x00\x00\x00\x00\xa0\x03\xce\x02\x00\x00\x00\xe8\xb0'
+                     b'\x03\xce\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(6, 12046278656, 12046282984, 0),
+               tid=53821, debugid=520552449, eventid=520552448, func_qualifier=1),
+        Kevent(timestamp=71890921221,
+               data=(b'\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(6, 0, 0, 0),
+               tid=53821, debugid=520552450, eventid=520552448, func_qualifier=2),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == ('DBG_DYLD_TIMING_STATIC_INITIALIZER, mh: 0x2ce03a000, image: "/usr/lib/libSystem.B.dylib", '
+                            'func: 0x2ce03b0e8')
+
+
+def test_timing_objc_init(traces_parser):
+    events = [
+        Kevent(timestamp=71890780958,
+               data=(b'\x00\x00\x05\x1f\x00\x00\x00\x00\xc7v\x08\x00\x00\x00\xacp/u'
+                     b'sr/lib/system/'),
+               values=(520421376, 8118864228242716359, 7091318039310988591, 3417499243072025391),
+               tid=53821, debugid=117506049, eventid=117506048, func_qualifier=1),
+        Kevent(timestamp=71890780958,
+               data=(b'libdispatch.dylib\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(7021238715563534700, 7596580142649467764, 98, 0),
+               tid=53821, debugid=117506050, eventid=117506048, func_qualifier=2),
+        Kevent(timestamp=71890780963,
+               data=(b'\xb0\xc8. U/?^\x88:\x8b\\S6\xb37\x00\x10'
+                     b'\xc1\xb5\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(6791198805756659888, 4013611424580057736, 7344295936, 0),
+               tid=53821, debugid=520421376, eventid=520421376, func_qualifier=0),
+        Kevent(timestamp=71890780967,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\xc7v\x08\x00\x00\x00\xacp\x02\x00'
+                     b'\x00\x80\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(0, 8118864228242716359, 18446744071562067970, 0),
+               tid=53821, debugid=520421380, eventid=520421380, func_qualifier=0),
+        Kevent(timestamp=71890923675,
+               data=(b'\x07\x00\x00\x00\x00\x00\x00\x00\x00\x10\xc1\xb5\x01\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(7, 7344295936, 0, 0),
+               tid=53821, debugid=520552481, eventid=520552480, func_qualifier=1),
+        Kevent(timestamp=71890927927,
+               data=(b'\x07\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(7, 0, 0, 0),
+               tid=53821, debugid=520552482, eventid=520552480, func_qualifier=2),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'DBG_DYLD_TIMING_OBJC_INIT, mh: 0x1b5c11000, image: "/usr/lib/system/libdispatch.dylib"'
+
+
+def test_timing_objc_map(traces_parser):
+    events = [
+        Kevent(timestamp=71692255441,
+               data=(b'\n\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(10, 0, 0, 0),
+               tid=53162, debugid=520552485, eventid=520552484, func_qualifier=1),
+        Kevent(timestamp=71692255747,
+               data=(b'\n\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(10, 0, 0, 0),
+               tid=53162, debugid=520552486, eventid=520552484, func_qualifier=2),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'DBG_DYLD_TIMING_OBJC_MAP'
+
+
+def test_uuid_unmap_b_path(traces_parser):
+    events = [
+        Kevent(timestamp=71890725767,
+               data=(b'\x14\x00\x05\x1f\x00\x00\x00\x00Dv\x08\x00\x00\x00\xacp/u'
+                     b'sr/lib/dyld\x00\x00\x00'),
+               values=(520421396, 8118864228242716228, 7091318039310988591, 431316624431),
+               tid=53821, debugid=117506051, eventid=117506048, func_qualifier=3),
+        Kevent(timestamp=71890725776,
+               data=(b'\xe7H\x08\x00\xff\xff\xff\x0fDv\x08\x00\x00\x00\xacp\x02\x00'
+                     b'\x00\x80\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(1152921500312422631, 8118864228242716228, 18446744071562067970, 0),
+               tid=53821, debugid=520421400, eventid=520421400, func_qualifier=0),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'DYLD_uuid_unmap_b, fid_objno: 542951, fid_generation: 0xfffffff, path: "/usr/lib/dyld"'
+
+
+def test_unmapped_image_is_forgotten(traces_parser):
+    # After an image is unmapped, an initializer at the same address must not be attributed to it.
+    traces_parser.global_strings[7] = '/usr/lib/libfoo.dylib'
+
+    def kevent(eventid, values, qualifier=0):
+        return Kevent(timestamp=1000, data=struct.pack('<4Q', *values), values=values, tid=5,
+                      debugid=eventid | qualifier, eventid=eventid, func_qualifier=qualifier)
+
+    events = [
+        kevent(0x1f050000, (0, 0, 0x100000, 0)), kevent(0x1f050004, (0, 7, 0, 0)),  # uuid_map_a/b
+        kevent(0x1f050014, (0, 0, 0x100000, 0)), kevent(0x1f050018, (0, 7, 0, 0)),  # uuid_unmap_a/b
+        kevent(0x1f070000, (1, 0x100000, 0x100abc, 0), 1), kevent(0x1f070000, (1, 0, 0, 0), 2),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'DBG_DYLD_TIMING_STATIC_INITIALIZER, mh: 0x100000, func: 0x100abc'

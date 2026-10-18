@@ -18,6 +18,10 @@ def to_rtld_flags(flags: int):
     return [r for r in RtldFlag if r.value & flags]
 
 
+def _image(path: str) -> str:
+    return f', image: "{path}"' if path else ''
+
+
 @dataclass
 class DyldUuidMapA:
     ktraces: List
@@ -34,9 +38,11 @@ class DyldUuidMapB:
     ktraces: List
     fid_objno: int
     fid_generation: int
+    path: str = ''
 
     def __str__(self):
-        return f'DYLD_uuid_map_b, fid_objno: {self.fid_objno}, fid_generation: {hex(self.fid_generation)}'
+        rep = f'DYLD_uuid_map_b, fid_objno: {self.fid_objno}, fid_generation: {hex(self.fid_generation)}'
+        return rep + f', path: "{self.path}"' if self.path else rep
 
 
 @dataclass
@@ -55,9 +61,11 @@ class DyldUuidUnmapB:
     ktraces: List
     fid_objno: int
     fid_generation: int
+    path: str = ''
 
     def __str__(self):
-        return f'DYLD_uuid_unmap_b, fid_objno: {self.fid_objno}, fid_generation: {hex(self.fid_generation)}'
+        rep = f'DYLD_uuid_unmap_b, fid_objno: {self.fid_objno}, fid_generation: {hex(self.fid_generation)}'
+        return rep + f', path: "{self.path}"' if self.path else rep
 
 
 @dataclass
@@ -77,9 +85,11 @@ class DyldUuidSharedCacheB:
     ktraces: List
     fid_objno: int
     fid_generation: int
+    path: str = ''
 
     def __str__(self):
-        return f'DYLD_uuid_shared_cache_b, fid_objno: {self.fid_objno}, fid_generation: {hex(self.fid_generation)}'
+        rep = f'DYLD_uuid_shared_cache_b, fid_objno: {self.fid_objno}, fid_generation: {hex(self.fid_generation)}'
+        return rep + f', path: "{self.path}"' if self.path else rep
 
 
 @dataclass
@@ -106,9 +116,53 @@ class DyldFuncForAddImage:
     ktraces: List
     addr: int
     func: int
+    image: str = ''
 
     def __str__(self):
-        return f'DBG_DYLD_TIMING_FUNC_FOR_ADD_IMAGE, addr: {hex(self.addr)}, func: {hex(self.func)}'
+        return f'DBG_DYLD_TIMING_FUNC_FOR_ADD_IMAGE, addr: {hex(self.addr)}{_image(self.image)}, func: {hex(self.func)}'
+
+
+@dataclass
+class DyldFuncForRemoveImage:
+    ktraces: List
+    addr: int
+    func: int
+    image: str = ''
+
+    def __str__(self):
+        return (f'DBG_DYLD_TIMING_FUNC_FOR_REMOVE_IMAGE, addr: {hex(self.addr)}{_image(self.image)}, '
+                f'func: {hex(self.func)}')
+
+
+@dataclass
+class DyldStaticInitializer:
+    ktraces: List
+    mh: int
+    func: int
+    image: str = ''
+
+    def __str__(self):
+        return f'DBG_DYLD_TIMING_STATIC_INITIALIZER, mh: {hex(self.mh)}{_image(self.image)}, func: {hex(self.func)}'
+
+
+@dataclass
+class DyldObjcInit:
+    ktraces: List
+    mh: int
+    image: str = ''
+
+    def __str__(self):
+        return f'DBG_DYLD_TIMING_OBJC_INIT, mh: {hex(self.mh)}{_image(self.image)}'
+
+
+@dataclass
+class DyldTiming:
+    """A dyld phase traced without arguments (applying fixups, mapping ObjC images, ...)."""
+    ktraces: List
+    name: str
+
+    def __str__(self):
+        return self.name
 
 
 @dataclass
@@ -171,34 +225,55 @@ class Dladdr:
         return f'dladdr({hex(self.addr)}), ret: {self.ret}'
 
 
-def handle_uuid_map_a(parser, events):
+# dyld traces each image (un)load as an `_a` event with its UUID and load address, followed on the same thread by a
+# `_b` event with the id of its path string. The parser keeps the loaded images per process, so the events that only
+# carry a mach header (initializers, ObjC init, ...) can name their image.
+
+def _image_path(parser, events, mh):
+    return parser.dyld_images.get((parser.threads_pids.get(events[0].tid, -1), mh), '')
+
+
+def _map_a(parser, events, cls):
     args = events[0].values
-    return DyldUuidMapA(events, UUID(bytes=events[0].data[:16]), args[2], args[3])
+    parser.dyld_pending_load_addr[events[0].tid] = args[2]
+    return cls(events, UUID(bytes=events[0].data[:16]), args[2], args[3])
+
+
+def _map_b(parser, events, cls, loaded):
+    args = events[0].values
+    path = parser.global_strings.get(args[1], '') if args[1] else ''
+    load_addr = parser.dyld_pending_load_addr.pop(events[0].tid, None)
+    if load_addr is not None:
+        key = (parser.threads_pids.get(events[0].tid, -1), load_addr)
+        if loaded and path:
+            parser.dyld_images[key] = path
+        elif not loaded:
+            parser.dyld_images.pop(key, None)
+    return cls(events, args[0] & 0xffffffff, args[0] >> 32, path)
+
+
+def handle_uuid_map_a(parser, events):
+    return _map_a(parser, events, DyldUuidMapA)
 
 
 def handle_uuid_map_b(parser, events):
-    arg = events[0].values[0]
-    return DyldUuidMapB(events, arg & 0xffffffff, arg >> 32)
+    return _map_b(parser, events, DyldUuidMapB, loaded=True)
 
 
 def handle_uuid_unmap_a(parser, events):
-    args = events[0].values
-    return DyldUuidUnmapA(events, UUID(bytes=events[0].data[:16]), args[2], args[3])
+    return _map_a(parser, events, DyldUuidUnmapA)
 
 
 def handle_uuid_unmap_b(parser, events):
-    arg = events[0].values[0]
-    return DyldUuidUnmapB(events, arg & 0xffffffff, arg >> 32)
+    return _map_b(parser, events, DyldUuidUnmapB, loaded=False)
 
 
 def handle_uuid_shared_cache_a(parser, events):
-    args = events[0].values
-    return DyldUuidSharedCacheA(events, UUID(bytes=events[0].data[:16]), args[2], args[3])
+    return _map_a(parser, events, DyldUuidSharedCacheA)
 
 
 def handle_uuid_shared_cache_b(parser, events):
-    arg = events[0].values[0]
-    return DyldUuidSharedCacheB(events, arg & 0xffffffff, arg >> 32)
+    return _map_b(parser, events, DyldUuidSharedCacheB, loaded=True)
 
 
 def handle_timing_launch_executable(parser, events):
@@ -217,7 +292,26 @@ def handle_timing_map_image(parser, events):
 
 def handle_timing_func_for_add_image(parser, events):
     args = events[0].values
-    return DyldFuncForAddImage(events, args[1], args[2])
+    return DyldFuncForAddImage(events, args[1], args[2], _image_path(parser, events, args[1]))
+
+
+def handle_timing_func_for_remove_image(parser, events):
+    args = events[0].values
+    return DyldFuncForRemoveImage(events, args[1], args[2], _image_path(parser, events, args[1]))
+
+
+def handle_timing_static_initializer(parser, events):
+    args = events[0].values
+    return DyldStaticInitializer(events, args[1], args[2], _image_path(parser, events, args[1]))
+
+
+def handle_timing_objc_init(parser, events):
+    args = events[0].values
+    return DyldObjcInit(events, args[1], _image_path(parser, events, args[1]))
+
+
+def handle_timing(parser, events):
+    return DyldTiming(events, parser.trace_codes[events[0].eventid])
 
 
 def handle_timing_bootstrap_start(parser, events):
@@ -257,6 +351,14 @@ handlers = {
     'DBG_DYLD_TIMING_LAUNCH_EXECUTABLE': handle_timing_launch_executable,
     'DBG_DYLD_TIMING_MAP_IMAGE': handle_timing_map_image,
     'DBG_DYLD_TIMING_FUNC_FOR_ADD_IMAGE': handle_timing_func_for_add_image,
+    'DBG_DYLD_TIMING_FUNC_FOR_REMOVE_IMAGE': handle_timing_func_for_remove_image,
+    'DBG_DYLD_TIMING_STATIC_INITIALIZER': handle_timing_static_initializer,
+    'DBG_DYLD_TIMING_OBJC_INIT': handle_timing_objc_init,
+    'DBG_DYLD_TIMING_OBJC_MAP': handle_timing,
+    'DBG_DYLD_TIMING_APPLY_FIXUPS': handle_timing,
+    'DBG_DYLD_TIMING_ATTACH_CODESIGNATURE': handle_timing,
+    'DBG_DYLD_TIMING_BUILD_CLOSURE': handle_timing,
+    'DBG_DYLD_REMOTE_IMAGE_NOTIFIER': handle_timing,
     'DBG_DYLD_TIMING_BOOTSTRAP_START': handle_timing_bootstrap_start,
     'DBG_DYLD_TIMING_DLOPEN': handle_timing_dlopen,
     'DBG_DYLD_TIMING_DLOPEN_PREFLIGHT': handle_timing_dlopen_preflight,

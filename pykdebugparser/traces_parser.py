@@ -46,6 +46,9 @@ class TracesParser:
         }
         self.last_data_newthread = None
         self.last_data_exec = None
+        # Images dyld loaded, by (pid, load address), and the load address of each thread's last `DYLD_uuid_*_a` event.
+        self.dyld_images = {}
+        self.dyld_pending_load_addr = {}
         # Event ids to show as `RawTrace` when they have no handler.
         self.raw_eventids = set()
         self.handlers = {}
