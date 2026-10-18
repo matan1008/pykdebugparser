@@ -475,3 +475,61 @@ def test_fchflagsat(traces_parser):
     ]
     ret = list(traces_parser.feed_generator(events))
     assert str(ret[-1]) == 'fchflagsat(-2, "private/var/tmp/f", UF_IMMUTABLE, 0)'
+
+
+def test_proc_exit(traces_parser):
+    events = [
+        Kevent(timestamp=73004319714,
+               data=(b'\xdf\x04\x00\x00\x00\x00\x00\x00\t\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(1247, 9, 0, 0),
+               tid=55798, debugid=67174405, eventid=67174404, func_qualifier=1),
+        Kevent(timestamp=73004327671,
+               data=(b'\xdf\x04\x00\x00\x00\x00\x00\x00\t\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(1247, 9, 0, 0),
+               tid=55798, debugid=67174406, eventid=67174404, func_qualifier=2),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'proc_exit, pid: 1247, signal: SIGKILL'
+
+
+def test_exit(traces_parser):
+    events = [
+        Kevent(timestamp=73094371729,
+               data=(b'\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\xa8 '
+                     b'\x01\x00\x00\x00\x00\x00\xd0\xb0\xdc\xf4\x01\x00\x00\x00'),
+               values=(0, 1, 73896, 8403071184),
+               tid=56116, debugid=67895301, eventid=67895300, func_qualifier=1),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'exit(0)'
+
+
+def test_bsdthread_terminate(traces_parser):
+    events = [
+        Kevent(timestamp=72658811835,
+               data=(b'\x00\x80\xack\x01\x00\x00\x00\x00\xc0\x08\x00\x00\x00\x00\x00\x03\x14'
+                     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'),
+               values=(6101434368, 573440, 5123, 0),
+               tid=56115, debugid=67896741, eventid=67896740, func_qualifier=1),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[-1]) == 'bsdthread_terminate(0x16bac8000, 0x8c000, 5123, 0)'
+
+
+@pytest.mark.parametrize('status, expected', [
+    (0x100, 'proc_exit, pid: 42, exit code: 1'),
+    (0x0, 'proc_exit, pid: 42, exit code: 0'),
+    (0x86, 'proc_exit, pid: 42, signal: SIGABRT, core dumped'),
+])
+def test_proc_exit_status(traces_parser, status, expected):
+    start = (42, status, 0, 0)
+    events = [
+        Kevent(timestamp=1000, data=struct.pack('<4Q', *start), values=start, tid=7573, debugid=0x4010005,
+               eventid=0x4010004, func_qualifier=1),
+        Kevent(timestamp=2000, data=struct.pack('<4Q', *start), values=start, tid=7573, debugid=0x4010006,
+               eventid=0x4010004, func_qualifier=2),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[0]) == expected

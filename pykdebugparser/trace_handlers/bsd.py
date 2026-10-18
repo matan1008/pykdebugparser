@@ -2823,6 +2823,55 @@ class BscGeteuid:
         return f'geteuid(), uid: {self.uid}'
 
 
+# Darwin's signal numbers, which differ from Linux's.
+DARWIN_SIGNALS = (None, 'SIGHUP', 'SIGINT', 'SIGQUIT', 'SIGILL', 'SIGTRAP', 'SIGABRT', 'SIGEMT', 'SIGFPE', 'SIGKILL',
+                  'SIGBUS', 'SIGSEGV', 'SIGSYS', 'SIGPIPE', 'SIGALRM', 'SIGTERM', 'SIGURG', 'SIGSTOP', 'SIGTSTP',
+                  'SIGCONT', 'SIGCHLD', 'SIGTTIN', 'SIGTTOU', 'SIGIO', 'SIGXCPU', 'SIGXFSZ', 'SIGVTALRM', 'SIGPROF',
+                  'SIGWINCH', 'SIGINFO', 'SIGUSR1', 'SIGUSR2')
+
+
+def format_wait_status(status: int) -> str:
+    """Describe a wait status (`W_EXITCODE(code, signal)`) as its exit code or terminating signal."""
+    signal = status & 0x7f
+    if not signal:
+        return f'exit code: {(status >> 8) & 0xff}'
+    name = DARWIN_SIGNALS[signal] if signal < len(DARWIN_SIGNALS) else str(signal)
+    return f'signal: {name}' + (', core dumped' if status & 0x80 else '')
+
+
+@dataclass
+class ProcExit:
+    """A process exiting (`proc_exit`). An exec also ends the process image it replaces: xnu gives the new image a new
+    proc and exits the old one, with the same pid and status 0."""
+    ktraces: List
+    pid: int
+    status: int
+
+    def __str__(self):
+        return f'proc_exit, pid: {self.pid}, {format_wait_status(self.status)}'
+
+
+@dataclass
+class BscExit:
+    ktraces: List
+    rval: int
+
+    def __str__(self):
+        return f'exit({self.rval})'
+
+
+@dataclass
+class BscBsdthreadTerminate:
+    ktraces: List
+    stackaddr: int
+    freesize: int
+    port: int
+    sem: int
+
+    def __str__(self):
+        return f'bsdthread_terminate({hex(self.stackaddr)}, {hex(self.freesize)}, {self.port}, {self.sem})'
+
+
 @dataclass
 class BscWait4:
     ktraces: List
@@ -5384,6 +5433,20 @@ def handle_geteuid(parser, events):
     return BscGeteuid(events, events[-1].values[1])
 
 
+def handle_proc_exit(parser, events):
+    args = events[0].values
+    return ProcExit(events, args[0], ctypes.c_int32(args[1]).value)
+
+
+def handle_exit(parser, events):
+    return BscExit(events, ctypes.c_int32(events[0].values[0]).value)
+
+
+def handle_bsdthread_terminate(parser, events):
+    args = events[0].values
+    return BscBsdthreadTerminate(events, args[0], args[1], args[2] & 0xffffffff, args[3] & 0xffffffff)
+
+
 def handle_wait4(parser, events, no_cancel=False):
     args = events[0].values
     return BscWait4(events, args[0], args[1], args[2], args[3], serialize_result(events[-1], 'pid'), no_cancel)
@@ -7472,6 +7535,9 @@ handlers = {
     'BSC_sys_crossarch_trap': handle_sys_crossarch_trap,
     'BSC_map_with_linking_np': handle_map_with_linking_np,
     'BSC_wait4': handle_wait4,
+    'proc_exit': handle_proc_exit,
+    'BSC_exit': handle_exit,
+    'BSC_bsdthread_terminate': handle_bsdthread_terminate,
     'BSC_mknodat': handle_mknodat,
     'BSC_mkfifoat': handle_mkfifoat,
     'BSC_freadlink': handle_freadlink,
