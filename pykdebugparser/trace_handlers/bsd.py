@@ -2837,13 +2837,22 @@ DARWIN_SIGNALS = (None, 'SIGHUP', 'SIGINT', 'SIGQUIT', 'SIGILL', 'SIGTRAP', 'SIG
                   'SIGWINCH', 'SIGINFO', 'SIGUSR1', 'SIGUSR2')
 
 
+def pid(value: int) -> int:
+    """A `pid_t` argument: a C int, where -1 means any and a negative pid a process group (`kill(-pgid, sig)`)."""
+    return ctypes.c_int32(value).value
+
+
+def signal_name(sig: int) -> str:
+    """A Darwin signal by name (`SIGTERM`), or its number (0 only checks that the target exists)."""
+    return DARWIN_SIGNALS[sig] if 0 < sig < len(DARWIN_SIGNALS) else str(sig)
+
+
 def format_wait_status(status: int) -> str:
     """Describe a wait status (`W_EXITCODE(code, signal)`) as its exit code or terminating signal."""
     signal = status & 0x7f
     if not signal:
         return f'exit code: {(status >> 8) & 0xff}'
-    name = DARWIN_SIGNALS[signal] if signal < len(DARWIN_SIGNALS) else str(signal)
-    return f'signal: {name}' + (', core dumped' if status & 0x80 else '')
+    return f'signal: {signal_name(signal)}' + (', core dumped' if status & 0x80 else '')
 
 
 @dataclass
@@ -3034,7 +3043,7 @@ class BscPthreadKill:
     result: str
 
     def __str__(self):
-        rep = f'pthread_kill({self.thread_port}, {self.sig})'
+        rep = f'pthread_kill({self.thread_port}, {signal_name(self.sig)})'
         if self.result:
             rep += f', {self.result}'
         return rep
@@ -3063,7 +3072,7 @@ class BscKill:
     result: str
 
     def __str__(self):
-        rep = f'kill({self.pid}, {self.sig})'
+        rep = f'kill({self.pid}, {signal_name(self.sig)})'
         if self.result:
             rep += f', {self.result}'
         return rep
@@ -3991,7 +4000,7 @@ class BscObsKillpg:
     result: str
 
     def __str__(self):
-        rep = f'killpg({self.pgrp}, {self.sig})'
+        rep = f'killpg({self.pgrp}, {signal_name(self.sig)})'
         if self.result:
             rep += f', {self.result}'
         return rep
@@ -5485,7 +5494,7 @@ def handle_bsdthread_terminate(parser, events):
 
 def handle_wait4(parser, events, no_cancel=False):
     args = events[0].values
-    return BscWait4(events, args[0], args[1], args[2], args[3], serialize_result(events[-1], 'pid'), no_cancel)
+    return BscWait4(events, pid(args[0]), args[1], args[2], args[3], serialize_result(events[-1], 'pid'), no_cancel)
 
 
 def handle_recvmsg(parser, events, no_cancel=False):
@@ -5548,7 +5557,7 @@ def handle_sigreturn(parser, events):
 
 
 def handle_kill(parser, events):
-    return BscKill(events, events[0].values[0], events[0].values[1], serialize_result(events[-1]))
+    return BscKill(events, pid(events[0].values[0]), events[0].values[1], serialize_result(events[-1]))
 
 
 def handle_getppid(parser, events):
@@ -5688,7 +5697,7 @@ def handle_getpgrp(parser, events):
 
 
 def handle_setpgid(parser, events):
-    return BscSetpgid(events, events[0].values[0], events[0].values[1], serialize_result(events[-1]))
+    return BscSetpgid(events, pid(events[0].values[0]), pid(events[0].values[1]), serialize_result(events[-1]))
 
 
 def handle_setitimer(parser, events):
@@ -5885,7 +5894,7 @@ def handle_gethostuuid(parser, events):
 
 
 def handle_obs_killpg(parser, events):
-    return BscObsKillpg(events, events[0].values[0], events[0].values[1], serialize_result(events[-1]))
+    return BscObsKillpg(events, pid(events[0].values[0]), events[0].values[1], serialize_result(events[-1]))
 
 
 def handle_setsid(parser, events):
@@ -5893,7 +5902,7 @@ def handle_setsid(parser, events):
 
 
 def handle_getpgid(parser, events):
-    return BscGetpgid(events, events[0].values[0], serialize_result(events[-1], 'gid'))
+    return BscGetpgid(events, pid(events[0].values[0]), serialize_result(events[-1], 'gid'))
 
 
 def handle_setprivexec(parser, events):
@@ -5952,12 +5961,12 @@ def handle_mount(parser, events):
 
 def handle_csops(parser, events):
     args = events[0].values
-    return BscCsops(events, args[0], parse_enum(CsopsOps, args[1]), args[2], args[3], serialize_result(events[-1]))
+    return BscCsops(events, pid(args[0]), parse_enum(CsopsOps, args[1]), args[2], args[3], serialize_result(events[-1]))
 
 
 def handle_csops_audittoken(parser, events):
     args = events[0].values
-    return BscCsopsAudittoken(events, args[0], parse_enum(CsopsOps, args[1]), args[2], args[3], serialize_result(events[-1]))
+    return BscCsopsAudittoken(events, pid(args[0]), parse_enum(CsopsOps, args[1]), args[2], args[3], serialize_result(events[-1]))
 
 
 def handle_waitid(parser, events, no_cancel=False):
@@ -6353,7 +6362,7 @@ def handle_psynch_cvwait(parser, events):
 
 def handle_getsid(parser, events):
     args = events[0].values
-    return BscGetsid(events, args[0], serialize_result(events[-1], 'sid'))
+    return BscGetsid(events, pid(args[0]), serialize_result(events[-1], 'sid'))
 
 
 def handle_psynch_cvclrprepost(parser, events):
@@ -6399,7 +6408,7 @@ def handle_semwait_signal(parser, events, no_cancel=False):
 
 def handle_proc_info(parser, events):
     args = events[0].values
-    return BscProcInfo(events, parse_enum(ProcInfoCall, args[0]), args[1], args[2], args[3], serialize_result(events[-1]))
+    return BscProcInfo(events, parse_enum(ProcInfoCall, args[0]), pid(args[1]), args[2], args[3], serialize_result(events[-1]))
 
 
 def handle_sendfile(parser, events):
@@ -6548,22 +6557,22 @@ def handle_audit_session_port(parser, events):
 
 def handle_pid_suspend(parser, events):
     args = events[0].values
-    return BscPidSuspend(events, args[0], serialize_result(events[-1]))
+    return BscPidSuspend(events, pid(args[0]), serialize_result(events[-1]))
 
 
 def handle_pid_resume(parser, events):
     args = events[0].values
-    return BscPidResume(events, args[0], serialize_result(events[-1]))
+    return BscPidResume(events, pid(args[0]), serialize_result(events[-1]))
 
 
 def handle_pid_hibernate(parser, events):
     args = events[0].values
-    return BscPidHibernate(events, args[0], serialize_result(events[-1]))
+    return BscPidHibernate(events, pid(args[0]), serialize_result(events[-1]))
 
 
 def handle_pid_shutdown_sockets(parser, events):
     args = events[0].values
-    return BscPidShutdownSockets(events, args[0], args[1], serialize_result(events[-1]))
+    return BscPidShutdownSockets(events, pid(args[0]), args[1], serialize_result(events[-1]))
 
 
 def handle_shared_region_map_and_slide_np(parser, events):
@@ -6578,7 +6587,7 @@ def handle_kas_info(parser, events):
 
 def handle_memorystatus_control(parser, events):
     args = events[0].values
-    return BscMemorystatusControl(events, args[0], args[1], args[2], args[3], serialize_result(events[-1]))
+    return BscMemorystatusControl(events, args[0], pid(args[1]), args[2], args[3], serialize_result(events[-1]))
 
 
 def handle_guarded_open_np(parser, events):
@@ -6609,7 +6618,7 @@ def handle_usrctl(parser, events):
 
 def handle_proc_rlimit_control(parser, events):
     args = events[0].values
-    return BscProcRlimitControl(events, args[0], args[1], args[2], serialize_result(events[-1]))
+    return BscProcRlimitControl(events, pid(args[0]), args[1], args[2], serialize_result(events[-1]))
 
 
 def handle_connectx(parser, events):
@@ -6663,7 +6672,7 @@ def handle_sfi_ctl(parser, events):
 
 def handle_sfi_pidctl(parser, events):
     args = events[0].values
-    return BscSfiPidctl(events, args[0], args[1], args[2], args[3], serialize_result(events[-1]))
+    return BscSfiPidctl(events, args[0], pid(args[1]), args[2], args[3], serialize_result(events[-1]))
 
 
 def handle_coalition(parser, events):
@@ -6778,7 +6787,7 @@ def handle_getattrlistat(parser, events):
 
 def handle_proc_trace_log(parser, events):
     args = events[0].values
-    return BscProcTraceLog(events, args[0], args[1], serialize_result(events[-1]))
+    return BscProcTraceLog(events, pid(args[0]), args[1], serialize_result(events[-1]))
 
 
 def handle_bsdthread_ctl(parser, events):
@@ -6979,7 +6988,7 @@ def handle_fs_snapshot(parser, events):
 
 def handle_terminate_with_payload(parser, events):
     args = events[0].values
-    return BscTerminateWithPayload(events, args[0], args[1], args[2], args[3], serialize_result(events[-1]))
+    return BscTerminateWithPayload(events, pid(args[0]), args[1], args[2], args[3], serialize_result(events[-1]))
 
 
 def handle_abort_with_payload(parser, events):
@@ -7065,12 +7074,12 @@ def handle_pivot_root(parser, events):
 
 def handle_task_inspect_for_pid(parser, events):
     args = events[0].values
-    return BscTaskInspectForPid(events, args[0], args[1], args[2], serialize_result(events[-1]))
+    return BscTaskInspectForPid(events, args[0], pid(args[1]), args[2], serialize_result(events[-1]))
 
 
 def handle_task_read_for_pid(parser, events):
     args = events[0].values
-    return BscTaskReadForPid(events, args[0], args[1], args[2], serialize_result(events[-1]))
+    return BscTaskReadForPid(events, args[0], pid(args[1]), args[2], serialize_result(events[-1]))
 
 
 def handle_sys_preadv(parser, events, no_cancel=False):
@@ -7092,7 +7101,7 @@ def handle_ulock_wait2(parser, events):
 
 def handle_proc_info_extended_id(parser, events):
     args = events[0].values
-    return BscProcInfoExtendedId(events, args[0], args[1], args[2], args[3], serialize_result(events[-1]))
+    return BscProcInfoExtendedId(events, args[0], pid(args[1]), args[2], args[3], serialize_result(events[-1]))
 
 
 def handle_openat_dprotected_np(parser, events):
