@@ -332,6 +332,14 @@ class ProcInfoCall(enum.Enum):
     PROC_INFO_CALL_DELEGATE_TERMINATE = 0x14
 
 
+class LedgerCmd(enum.Enum):
+    LEDGER_INFO = 0
+    LEDGER_ENTRY_INFO = 1
+    LEDGER_TEMPLATE_INFO = 2
+    LEDGER_LIMIT = 3
+    LEDGER_ENTRY_INFO_V2 = 4
+
+
 class FsSnapshotOp(enum.Enum):
     SNAPSHOT_OP_CREATE = 0x01
     SNAPSHOT_OP_DELETE = 0x02
@@ -2328,6 +2336,336 @@ class BscProcInfoExtendedId:
 
     def __str__(self):
         rep = f'proc_info_extended_id({self.callnum}, {self.pid}, {self.flavor}, {self.flags})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscOpenatDprotectedNp:
+    ktraces: List
+    fd: int
+    path: str
+    flags: List
+    protection_class: int
+    result: str
+
+    def __str__(self):
+        flags = ' | '.join(map(lambda f: f.name, self.flags))
+        return f'openat_dprotected_np({self.fd}, "{self.path}", {flags}, {self.protection_class}), {self.result}'
+
+
+@dataclass
+class BscLedger:
+    ktraces: List
+    cmd: LedgerCmd
+    arg1: int
+    arg2: int
+    arg3: int
+    result: str
+
+    def __str__(self):
+        rep = f'ledger({self.cmd.name}, {self.arg1}, {hex(self.arg2)}, {hex(self.arg3)})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscSysCrossarchTrap:
+    ktraces: List
+    name: int
+    result: str
+
+    def __str__(self):
+        rep = f'crossarch_trap({self.name})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscMapWithLinkingNp:
+    ktraces: List
+    regions: int
+    region_count: int
+    link_info: int
+    link_info_size: int
+    result: str
+
+    def __str__(self):
+        rep = (f'map_with_linking_np({hex(self.regions)}, {self.region_count}, {hex(self.link_info)}, '
+               f'{self.link_info_size})')
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscMknodat:
+    ktraces: List
+    fd: int
+    path: str
+    mode: List
+    dev: int
+    result: str
+
+    def __str__(self):
+        mode = ' | '.join(map(lambda f: f.name, self.mode))
+        rep = f'mknodat({self.fd}, "{self.path}", {mode}, {self.dev})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscMkfifoat:
+    ktraces: List
+    fd: int
+    path: str
+    mode: List
+    result: str
+
+    def __str__(self):
+        mode = ' | '.join(map(lambda f: f.name, self.mode))
+        rep = f'mkfifoat({self.fd}, "{self.path}", {mode})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscFreadlink:
+    ktraces: List
+    fd: int
+    buf: int
+    bufsize: int
+    result: str
+
+    def __str__(self):
+        return f'freadlink({self.fd}, {hex(self.buf)}, {self.bufsize}), {self.result}'
+
+
+@dataclass
+class BscFunmount:
+    ktraces: List
+    fd: int
+    flags: int
+    result: str
+
+    def __str__(self):
+        rep = f'funmount({self.fd}, {self.flags})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscFchflagsat:
+    ktraces: List
+    fd: int
+    path: str
+    flags: List
+    atflag: int
+    result: str
+
+    def __str__(self):
+        flags = ' | '.join(map(lambda f: f.name, self.flags))
+        rep = f'fchflagsat({self.fd}, "{self.path}", {flags}, {self.atflag})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscGetumask:
+    ktraces: List
+    mask: int
+
+    def __str__(self):
+        return f'getumask(), mask: {self.mask}'
+
+
+@dataclass
+class BscSysDup3:
+    ktraces: List
+    fildes: int
+    fildes2: int
+    flags: int
+    result: str
+
+    def __str__(self):
+        return f'dup3({self.fildes}, {self.fildes2}, {self.flags}), {self.result}'
+
+
+@dataclass
+class BscPipe2:
+    ktraces: List
+    fildes: int
+    flags: int
+    result: str
+
+    def __str__(self):
+        rep = f'pipe2({hex(self.fildes)}, {self.flags})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscAiocb:
+    ktraces: List
+    call: str
+    aiocbp: int
+    result: str
+
+    def __str__(self):
+        rep = f'{self.call}({hex(self.aiocbp)})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscAioCancel:
+    ktraces: List
+    fd: int
+    aiocbp: int
+    result: str
+
+    def __str__(self):
+        return f'aio_cancel({self.fd}, {hex(self.aiocbp)}), {self.result}'
+
+
+@dataclass
+class BscAioFsync:
+    ktraces: List
+    op: int
+    aiocbp: int
+    result: str
+
+    def __str__(self):
+        rep = f'aio_fsync({self.op}, {hex(self.aiocbp)})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscAioSuspend:
+    ktraces: List
+    aiocblist: int
+    nent: int
+    timeoutp: int
+    result: str
+    no_cancel: bool = False
+
+    def __str__(self):
+        no_cancel = '_nocancel' if self.no_cancel else ''
+        rep = f'aio_suspend{no_cancel}({hex(self.aiocblist)}, {self.nent}, {hex(self.timeoutp)})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscLioListio:
+    ktraces: List
+    mode: int
+    aiocblist: int
+    nent: int
+    sigp: int
+    result: str
+
+    def __str__(self):
+        rep = f'lio_listio({self.mode}, {hex(self.aiocblist)}, {self.nent}, {hex(self.sigp)})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscSigwait:
+    ktraces: List
+    set: int
+    sig: int
+    result: str
+    no_cancel: bool = False
+
+    def __str__(self):
+        no_cancel = '_nocancel' if self.no_cancel else ''
+        rep = f'sigwait{no_cancel}({hex(self.set)}, {hex(self.sig)})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscSysCoalitionPolicySet:
+    ktraces: List
+    cid: int
+    flavor: int
+    value: int
+    result: str
+
+    def __str__(self):
+        rep = f'coalition_policy_set({self.cid}, {self.flavor}, {self.value})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscSysCoalitionPolicyGet:
+    ktraces: List
+    cid: int
+    flavor: int
+    result: str
+
+    def __str__(self):
+        return f'coalition_policy_get({self.cid}, {self.flavor}), {self.result}'
+
+
+@dataclass
+class BscUngraftdmg:
+    ktraces: List
+    mountdir: str
+    flags: int
+    result: str
+
+    def __str__(self):
+        rep = f'ungraftdmg("{self.mountdir}", {self.flags})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscOslogCoprocReg:
+    ktraces: List
+    uuid: int
+    file_path: int
+    file_path_len: int
+    result: str
+
+    def __str__(self):
+        rep = f'oslog_coproc_reg({hex(self.uuid)}, {hex(self.file_path)}, {self.file_path_len})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscOslogCoproc:
+    ktraces: List
+    buff: int
+    buff_len: int
+    type: int
+    uuid: int
+    result: str
+
+    def __str__(self):
+        rep = f'oslog_coproc({hex(self.buff)}, {self.buff_len}, {self.type}, {hex(self.uuid)})'
         if self.result:
             rep += f', {self.result}'
         return rep
@@ -6648,6 +6986,126 @@ def handle_proc_info_extended_id(parser, events):
     return BscProcInfoExtendedId(events, args[0], args[1], args[2], args[3], serialize_result(events[-1]))
 
 
+def handle_openat_dprotected_np(parser, events):
+    args = events[0].values
+    path = parser.parse_vnode(events).path
+    return BscOpenatDprotectedNp(events, ctypes.c_int32(args[0]).value, path, serialize_open_flags(args[2]), args[3],
+                                 serialize_result(events[-1], 'fd'))
+
+
+def handle_ledger(parser, events):
+    args = events[0].values
+    cmd = parse_enum(LedgerCmd, args[0])
+    return BscLedger(events, cmd, args[1], args[2], args[3], serialize_result(events[-1]))
+
+
+def handle_sys_crossarch_trap(parser, events):
+    return BscSysCrossarchTrap(events, events[0].values[0], serialize_result(events[-1]))
+
+
+def handle_map_with_linking_np(parser, events):
+    args = events[0].values
+    return BscMapWithLinkingNp(events, args[0], args[1], args[2], args[3], serialize_result(events[-1]))
+
+
+def handle_mknodat(parser, events):
+    args = events[0].values
+    path = parser.parse_vnode(events).path
+    return BscMknodat(events, ctypes.c_int32(args[0]).value, path, serialize_stat_flags(args[2]), args[3],
+                      serialize_result(events[-1]))
+
+
+def handle_mkfifoat(parser, events):
+    args = events[0].values
+    path = parser.parse_vnode(events).path
+    return BscMkfifoat(events, ctypes.c_int32(args[0]).value, path, serialize_stat_flags(args[2]),
+                       serialize_result(events[-1]))
+
+
+def handle_freadlink(parser, events):
+    args = events[0].values
+    return BscFreadlink(events, args[0], args[1], args[2], serialize_result(events[-1], 'count'))
+
+
+def handle_funmount(parser, events):
+    args = events[0].values
+    return BscFunmount(events, args[0], args[1], serialize_result(events[-1]))
+
+
+def handle_fchflagsat(parser, events):
+    args = events[0].values
+    flags = [flag for flag in BscChangeableFlags if flag.value & args[2]]
+    return BscFchflagsat(events, ctypes.c_int32(args[0]).value, parser.parse_vnode(events).path, flags, args[3],
+                         serialize_result(events[-1]))
+
+
+def handle_getumask(parser, events):
+    return BscGetumask(events, events[-1].values[1])
+
+
+def handle_sys_dup3(parser, events):
+    args = events[0].values
+    return BscSysDup3(events, args[0], args[1], args[2], serialize_result(events[-1], 'fd'))
+
+
+def handle_pipe2(parser, events):
+    args = events[0].values
+    return BscPipe2(events, args[0], args[1], serialize_result(events[-1]))
+
+
+def handle_aiocb(parser, events, call, success_name=''):
+    return BscAiocb(events, call, events[0].values[0], serialize_result(events[-1], success_name))
+
+
+def handle_aio_cancel(parser, events):
+    args = events[0].values
+    return BscAioCancel(events, args[0], args[1], serialize_result(events[-1], 'return'))
+
+
+def handle_aio_fsync(parser, events):
+    args = events[0].values
+    return BscAioFsync(events, args[0], args[1], serialize_result(events[-1]))
+
+
+def handle_aio_suspend(parser, events, no_cancel=False):
+    args = events[0].values
+    return BscAioSuspend(events, args[0], args[1], args[2], serialize_result(events[-1]), no_cancel)
+
+
+def handle_lio_listio(parser, events):
+    args = events[0].values
+    return BscLioListio(events, args[0], args[1], args[2], args[3], serialize_result(events[-1]))
+
+
+def handle_sigwait(parser, events, no_cancel=False):
+    args = events[0].values
+    return BscSigwait(events, args[0], args[1], serialize_result(events[-1]), no_cancel)
+
+
+def handle_sys_coalition_policy_set(parser, events):
+    args = events[0].values
+    return BscSysCoalitionPolicySet(events, args[0], args[1], args[2], serialize_result(events[-1]))
+
+
+def handle_sys_coalition_policy_get(parser, events):
+    args = events[0].values
+    return BscSysCoalitionPolicyGet(events, args[0], args[1], serialize_result(events[-1], 'value'))
+
+
+def handle_ungraftdmg(parser, events):
+    return BscUngraftdmg(events, parser.parse_vnode(events).path, events[0].values[1], serialize_result(events[-1]))
+
+
+def handle_oslog_coproc_reg(parser, events):
+    args = events[0].values
+    return BscOslogCoprocReg(events, args[0], args[1], args[2], serialize_result(events[-1]))
+
+
+def handle_oslog_coproc(parser, events):
+    args = events[0].values
+    return BscOslogCoproc(events, args[0], args[1], args[2], args[3], serialize_result(events[-1]))
+
+
 handlers = {
     'BSC_read': handle_read,
     'BSC_write': handle_write,
@@ -7009,4 +7467,35 @@ handlers = {
     'BSC_sys_pwritev_nocancel': partial(handle_sys_pwritev, no_cancel=True),
     'BSC_ulock_wait2': handle_ulock_wait2,
     'BSC_proc_info_extended_id': handle_proc_info_extended_id,
+    'BSC_openat_dprotected_np': handle_openat_dprotected_np,
+    'BSC_ledger': handle_ledger,
+    'BSC_sys_crossarch_trap': handle_sys_crossarch_trap,
+    'BSC_map_with_linking_np': handle_map_with_linking_np,
+    'BSC_wait4': handle_wait4,
+    'BSC_mknodat': handle_mknodat,
+    'BSC_mkfifoat': handle_mkfifoat,
+    'BSC_freadlink': handle_freadlink,
+    'BSC_funmount': handle_funmount,
+    'BSC_fchflagsat': handle_fchflagsat,
+    'BSC_getumask': handle_getumask,
+    'BSC_sys_dup3': handle_sys_dup3,
+    'BSC_pipe2': handle_pipe2,
+    'BSC_aio_read': partial(handle_aiocb, call='aio_read'),
+    'BSC_aio_write': partial(handle_aiocb, call='aio_write'),
+    'BSC_aio_readv': partial(handle_aiocb, call='aio_readv'),
+    'BSC_aio_writev': partial(handle_aiocb, call='aio_writev'),
+    'BSC_aio_error': partial(handle_aiocb, call='aio_error', success_name='error'),
+    'BSC_aio_return': partial(handle_aiocb, call='aio_return', success_name='count'),
+    'BSC_aio_cancel': handle_aio_cancel,
+    'BSC_aio_fsync': handle_aio_fsync,
+    'BSC_aio_suspend': handle_aio_suspend,
+    'BSC_aio_suspend_nocancel': partial(handle_aio_suspend, no_cancel=True),
+    'BSC_lio_listio': handle_lio_listio,
+    'BSC_sigwait': handle_sigwait,
+    'BSC_sigwait_nocancel': partial(handle_sigwait, no_cancel=True),
+    'BSC_sys_coalition_policy_set': handle_sys_coalition_policy_set,
+    'BSC_sys_coalition_policy_get': handle_sys_coalition_policy_get,
+    'BSC_ungraftdmg': handle_ungraftdmg,
+    'BSC_oslog_coproc_reg': handle_oslog_coproc_reg,
+    'BSC_oslog_coproc': handle_oslog_coproc,
 }
