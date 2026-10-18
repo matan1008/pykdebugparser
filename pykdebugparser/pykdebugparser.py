@@ -9,6 +9,7 @@ from pykdebugparser.callstacks_parser import CallstacksParser
 from pykdebugparser.kd_buf_parser import KdBufParser
 from pykdebugparser.kevent import DgbFuncQual
 from pykdebugparser.trace_codes import default_trace_codes
+from pykdebugparser.trace_handlers.trace import TRACE_LOST_EVENTS
 from pykdebugparser.traces_parser import TracesParser
 from pykdebugparser.os_log_event import OsLogEvent
 
@@ -93,7 +94,9 @@ class PyKdebugParser:
         if self.filter_process is not None:
             trace_generator = filter(self._filter_process_callback, trace_generator)
         if add_trace_class:
-            trace_generator = filter(lambda t: t.ktraces[0].eventid >> 24 != DBG_TRACE, trace_generator)
+            # Lost events stay: they tell the reader the trace has a gap.
+            trace_generator = filter(lambda t: t.ktraces[0].eventid >> 24 != DBG_TRACE
+                                     or t.ktraces[0].eventid == TRACE_LOST_EVENTS, trace_generator)
         if add_fs_class:
             trace_generator = filter(lambda t: t.ktraces[0].eventid >> 24 != DBG_FSYSTEM, trace_generator)
         return trace_generator
