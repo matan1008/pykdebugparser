@@ -378,11 +378,18 @@ def serialize_stat_flags(flags: int) -> List[StatFlags]:
     return stat_flags
 
 
+# bsd/sys/errno.h: codes the kernel uses internally, which a syscall end event can carry.
+KERNEL_ERRNOS = {-1: 'ERESTART', -2: 'EJUSTRETURN'}
+
+
 def serialize_result(end_event, success_name='', fmt=lambda x: x) -> str:
     error_code = end_event.values[0]
     res = end_event.values[1]
+    signed = ctypes.c_int64(error_code).value
     if error_code in errno.errorcode:
         err = f'errno: {errno.errorcode[error_code]}({error_code})'
+    elif signed in KERNEL_ERRNOS:
+        err = f'errno: {KERNEL_ERRNOS[signed]}({signed})'
     else:
         err = f'errno: {error_code}'
     success = f'{success_name}: {fmt(res)}' if success_name else ''
@@ -2823,6 +2830,55 @@ class BscGeteuid:
         return f'geteuid(), uid: {self.uid}'
 
 
+# Darwin's signal numbers, which differ from Linux's.
+DARWIN_SIGNALS = (None, 'SIGHUP', 'SIGINT', 'SIGQUIT', 'SIGILL', 'SIGTRAP', 'SIGABRT', 'SIGEMT', 'SIGFPE', 'SIGKILL',
+                  'SIGBUS', 'SIGSEGV', 'SIGSYS', 'SIGPIPE', 'SIGALRM', 'SIGTERM', 'SIGURG', 'SIGSTOP', 'SIGTSTP',
+                  'SIGCONT', 'SIGCHLD', 'SIGTTIN', 'SIGTTOU', 'SIGIO', 'SIGXCPU', 'SIGXFSZ', 'SIGVTALRM', 'SIGPROF',
+                  'SIGWINCH', 'SIGINFO', 'SIGUSR1', 'SIGUSR2')
+
+
+def format_wait_status(status: int) -> str:
+    """Describe a wait status (`W_EXITCODE(code, signal)`) as its exit code or terminating signal."""
+    signal = status & 0x7f
+    if not signal:
+        return f'exit code: {(status >> 8) & 0xff}'
+    name = DARWIN_SIGNALS[signal] if signal < len(DARWIN_SIGNALS) else str(signal)
+    return f'signal: {name}' + (', core dumped' if status & 0x80 else '')
+
+
+@dataclass
+class ProcExit:
+    """A process exiting (`proc_exit`). An exec also ends the process image it replaces: xnu gives the new image a new
+    proc and exits the old one, with the same pid and status 0."""
+    ktraces: List
+    pid: int
+    status: int
+
+    def __str__(self):
+        return f'proc_exit, pid: {self.pid}, {format_wait_status(self.status)}'
+
+
+@dataclass
+class BscExit:
+    ktraces: List
+    rval: int
+
+    def __str__(self):
+        return f'exit({self.rval})'
+
+
+@dataclass
+class BscBsdthreadTerminate:
+    ktraces: List
+    stackaddr: int
+    freesize: int
+    port: int
+    sem: int
+
+    def __str__(self):
+        return f'bsdthread_terminate({hex(self.stackaddr)}, {hex(self.freesize)}, {self.port}, {self.sem})'
+
+
 @dataclass
 class BscWait4:
     ktraces: List
@@ -2968,6 +3024,35 @@ class BscSync:
 
     def __str__(self):
         return 'sync()'
+
+
+@dataclass
+class BscPthreadKill:
+    ktraces: List
+    thread_port: int
+    sig: int
+    result: str
+
+    def __str__(self):
+        rep = f'pthread_kill({self.thread_port}, {self.sig})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
+
+
+@dataclass
+class BscSigreturn:
+    ktraces: List
+    uctx: int
+    infostyle: int
+    token: int
+    result: str
+
+    def __str__(self):
+        rep = f'sigreturn({hex(self.uctx)}, {self.infostyle}, {hex(self.token)})'
+        if self.result:
+            rep += f', {self.result}'
+        return rep
 
 
 @dataclass
@@ -5384,6 +5469,20 @@ def handle_geteuid(parser, events):
     return BscGeteuid(events, events[-1].values[1])
 
 
+def handle_proc_exit(parser, events):
+    args = events[0].values
+    return ProcExit(events, args[0], ctypes.c_int32(args[1]).value)
+
+
+def handle_exit(parser, events):
+    return BscExit(events, ctypes.c_int32(events[0].values[0]).value)
+
+
+def handle_bsdthread_terminate(parser, events):
+    args = events[0].values
+    return BscBsdthreadTerminate(events, args[0], args[1], args[2] & 0xffffffff, args[3] & 0xffffffff)
+
+
 def handle_wait4(parser, events, no_cancel=False):
     args = events[0].values
     return BscWait4(events, args[0], args[1], args[2], args[3], serialize_result(events[-1], 'pid'), no_cancel)
@@ -5436,6 +5535,16 @@ def handle_fchflags(parser, events):
 
 def handle_sync(parser, events):
     return BscSync(events)
+
+
+def handle_pthread_kill(parser, events):
+    args = events[0].values
+    return BscPthreadKill(events, args[0] & 0xffffffff, args[1], serialize_result(events[-1]))
+
+
+def handle_sigreturn(parser, events):
+    args = events[0].values
+    return BscSigreturn(events, args[0], args[1], args[2], serialize_result(events[-1]))
 
 
 def handle_kill(parser, events):
@@ -7133,6 +7242,8 @@ handlers = {
     'BSC_fchflags': handle_fchflags,
     'BSC_sync': handle_sync,
     'BSC_kill': handle_kill,
+    'BSC_pthread_kill': handle_pthread_kill,
+    'BSC_sigreturn': handle_sigreturn,
     'BSC_getppid': handle_getppid,
     'BSC_sys_dup': handle_sys_dup,
     'BSC_pipe': handle_pipe,
@@ -7472,6 +7583,9 @@ handlers = {
     'BSC_sys_crossarch_trap': handle_sys_crossarch_trap,
     'BSC_map_with_linking_np': handle_map_with_linking_np,
     'BSC_wait4': handle_wait4,
+    'proc_exit': handle_proc_exit,
+    'BSC_exit': handle_exit,
+    'BSC_bsdthread_terminate': handle_bsdthread_terminate,
     'BSC_mknodat': handle_mknodat,
     'BSC_mkfifoat': handle_mkfifoat,
     'BSC_freadlink': handle_freadlink,

@@ -189,6 +189,23 @@ def handle_trace_string_threadname_prev(parser, events):
     return event
 
 
+# bsd/sys/kdebug.h
+TRACE_LOST_EVENTS = 0x7020008
+
+
+@dataclass
+class TraceLostEvents:
+    """The kernel's trace buffer filled up and dropped events before this point."""
+    ktraces: List
+
+    def __str__(self):
+        return 'TRACE_LOST_EVENTS: the kernel dropped trace events here'
+
+
+def handle_trace_lost_events(parser, events):
+    return TraceLostEvents(events)
+
+
 handlers = {
     'TRACE_DATA_NEWTHREAD': handle_trace_data_newthread,
     'TRACE_DATA_EXEC': handle_trace_data_exec,
@@ -200,4 +217,5 @@ handlers = {
     'TRACE_STRING_PROC_EXIT': handle_trace_string_proc_exit,
     'TRACE_STRING_THREADNAME': handle_trace_string_threadname,
     'TRACE_STRING_THREADNAME_PREV': handle_trace_string_threadname_prev,
+    'TRACE_LOST_EVENTS': handle_trace_lost_events,
 }

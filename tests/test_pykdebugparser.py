@@ -164,3 +164,18 @@ def test_traces_filter_eventid_without_handler():
     assert len(traces) == 2
     assert traces[0].endswith('MACH_SCHED_THREAD_SELECT(0x0, 0x0, 0x0, 0x0), end: (0x1d3, 0x0, 0x0, 0x4)')
     assert traces[1].endswith('MACH_PSET_AVG_EXEC_TIME(0x0, 0x3, 0x0, 0x0)')
+
+
+def test_traces_keep_lost_events_when_filtered():
+    # The parser adds the TRACE class to filtered traces for its own bookkeeping and hides it again, except for lost
+    # events, which tell the reader the trace has a gap.
+    events = [
+        _kd_buf(1000, 0x7020008, (1, 0, 0, 0)),  # TRACE_LOST_EVENTS
+        _kd_buf(1001, 0x1400140, (0, 3, 0, 0)),  # MACH_PSET_AVG_EXEC_TIME
+    ]
+    events_buf = RAW_VERSION2_BYTES + b'\x00' * 0x11c + b''.join(events)
+    parser = _traces_parser()
+    parser.filter_class = [1]
+    traces = list(parser.formatted_traces(BytesIO(events_buf)))
+    assert len(traces) == 1
+    assert traces[0].endswith('TRACE_LOST_EVENTS: the kernel dropped trace events here')

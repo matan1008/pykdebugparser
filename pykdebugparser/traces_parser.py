@@ -29,6 +29,9 @@ class RawTrace:
         return rep
 
 
+NO_RETURN_CALLS = ('BSC_exit', 'BSC_bsdthread_terminate')
+
+
 class TracesParser:
     def __init__(self, trace_codes_map, threads_pids, pids_names):
         self.trace_codes = trace_codes_map
@@ -46,6 +49,13 @@ class TracesParser:
         }
         self.last_data_newthread = None
         self.last_data_exec = None
+        # Calls that never return, parsed from their start event.
+        self.no_return_eventids = {eventid for eventid, name in trace_codes_map.items() if name in NO_RETURN_CALLS}
+        # Disk I/Os issued and not completed yet, by their buf address.
+        self.pending_disk_io = {}
+        # Images dyld loaded, by (pid, load address), and the load address of each thread's last `DYLD_uuid_*_a` event.
+        self.dyld_images = {}
+        self.dyld_pending_load_addr = {}
         # Event ids to show as `RawTrace` when they have no handler.
         self.raw_eventids = set()
         self.handlers = {}
@@ -109,6 +119,9 @@ class TracesParser:
         return list(self.vnode_generator([e for e in events if self.trace_codes.get(e.eventid) == 'VFS_LOOKUP']))
 
     def _feed_start_event(self, event, state):
+        if event.eventid in self.no_return_eventids:
+            # The thread or process ends inside the call, so its end is never traced.
+            return self._feed_single_event(event, state)
         tid_state = state.get(event.tid)
         if tid_state is None:
             # New tid
