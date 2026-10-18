@@ -1,6 +1,10 @@
+import struct
+
+import pytest
+
 from pykdebugparser.kevent import Kevent
 from pykdebugparser.trace_handlers.mach import AsynchronousSystemTrapsReason, ThreadState, ProcessState, \
-    DbgVmFaultType, VmProtection
+    DbgVmFaultType, VmProtection, MkTimerFlags
 
 
 def test_kernel_data_abort_same_el_exc_arm(traces_parser):
@@ -450,3 +454,26 @@ def test_sched_clutch_tg_bucket_pri(traces_parser):
     assert pri.scb_bucket == 0
     assert pri.priority == 67
     assert pri.interactive_score == 16
+
+
+def _mk_timer_arm_leeway_events(flags):
+    values = (0x1234, flags, 1000, 50)
+    data = struct.pack('<4Q', *values)
+    return [
+        Kevent(timestamp=1, data=data, values=values, tid=7, debugid=0x10c017d, eventid=0x10c017c, func_qualifier=1),
+        Kevent(timestamp=2, data=bytes(32), values=(0, 0, 0, 0), tid=7, debugid=0x10c017e, eventid=0x10c017c,
+               func_qualifier=2),
+    ]
+
+
+@pytest.mark.parametrize('flags, flags_name', [(0, 'MK_TIMER_NORMAL'), (1, 'MK_TIMER_CRITICAL')])
+def test_mk_timer_arm_leeway(traces_parser, flags, flags_name):
+    trace = list(traces_parser.feed_generator(_mk_timer_arm_leeway_events(flags)))[0]
+    assert trace.mk_timer_flags == MkTimerFlags(flags)
+    assert str(trace) == f'mk_timer_arm_leeway(0x1234, {flags_name}, 1000, 50)'
+
+
+def test_mk_timer_arm_leeway_unknown_flags(traces_parser):
+    trace = list(traces_parser.feed_generator(_mk_timer_arm_leeway_events(3)))[0]
+    assert trace.mk_timer_flags == 3
+    assert str(trace) == 'mk_timer_arm_leeway(0x1234, 3, 1000, 50)'

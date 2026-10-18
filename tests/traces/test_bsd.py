@@ -1,3 +1,7 @@
+import struct
+
+import pytest
+
 from pykdebugparser.kevent import Kevent
 
 
@@ -30,3 +34,21 @@ def test_csops_audittoken_16(traces_parser):
     ]
     ret = list(traces_parser.feed_generator(events))
     assert str(ret[0]) == 'csops_audittoken(67, CS_OPS_16, 0x16da126a0, 8), errno: ERANGE(34)'
+
+
+@pytest.mark.parametrize('domain, expected', [
+    (2, 'socket(AF_INET, SOCK_STREAM, 0), fd: 5'),
+    # AF_MULTIPATH, which only XNU's private socket header defines.
+    (39, 'socket(39, SOCK_STREAM, 0), fd: 5'),
+])
+def test_socket(traces_parser, domain, expected):
+    start = (domain, 1, 0, 0)
+    end = (0, 5, 0, 0)
+    events = [
+        Kevent(timestamp=1000, data=struct.pack('<4Q', *start), values=start, tid=7573, debugid=0x40c0185,
+               eventid=0x40c0184, func_qualifier=1),
+        Kevent(timestamp=2000, data=struct.pack('<4Q', *end), values=end, tid=7573, debugid=0x40c0186,
+               eventid=0x40c0184, func_qualifier=2),
+    ]
+    ret = list(traces_parser.feed_generator(events))
+    assert str(ret[0]) == expected

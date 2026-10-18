@@ -8,23 +8,23 @@ version = "1.2.8"
 description = "Python parser for kdebug events"
 readme.file = "README.md"
 readme.content-type = "text/markdown"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = {file = "LICENSE"}
 authors = [
   {email = "matan1008@gmail.com"},
   {name = "Matan Perelman"},
 ]
 classifiers = [
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
 ]
 dependencies = [
-    "construct",
+    "bytestruct>=0.1.0",
     "pygments",
     "click",
     "termcolor",

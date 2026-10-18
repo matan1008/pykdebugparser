@@ -39,26 +39,27 @@ class TracesParser:
         self.handlers.update(turnstile_handlers)
 
     def feed(self, event):
-        if event.eventid in self.trace_codes:
-            trace_name = self.trace_codes[event.eventid]
-            if trace_name in trace_handlers:
-                return self.qualifiers_actions[event.func_qualifier](event, self.on_going_traces)
+        trace_name = self.trace_codes.get(event.eventid)
+        if trace_name is not None and trace_name in trace_handlers:
+            return self.qualifiers_actions[event.func_qualifier](event, self.on_going_traces)
 
         return self.qualifiers_actions[event.func_qualifier](event, self.on_going_events)
 
     def feed_generator(self, generator):
+        feed = self.feed
         for event in generator:
-            ret = self.feed(event)
+            ret = feed(event)
             if ret is not None:
                 yield ret
 
     def parse_event_list(self, events):
-        if events[0].eventid not in self.trace_codes:
+        trace_name = self.trace_codes.get(events[0].eventid)
+        if trace_name is None:
             return None
-        trace_name = self.trace_codes[events[0].eventid]
-        if trace_name not in self.handlers:
+        handler = self.handlers.get(trace_name)
+        if handler is None:
             return None
-        return self.handlers[trace_name](self, events)
+        return handler(self, events)
 
     @staticmethod
     def vnode_generator(events):
@@ -89,26 +90,30 @@ class TracesParser:
         return list(self.vnode_generator([e for e in events if self.trace_codes.get(e.eventid) == 'VFS_LOOKUP']))
 
     def _feed_start_event(self, event, state):
-        if event.tid not in state:
+        tid_state = state.get(event.tid)
+        if tid_state is None:
             # New tid
-            state[event.tid] = {}
+            tid_state = state[event.tid] = {}
 
-        state[event.tid][event.eventid] = []
-        for eventid in state[event.tid]:
-            state[event.tid][eventid].append(event)
+        tid_state[event.eventid] = []
+        for events in tid_state.values():
+            events.append(event)
 
     def _feed_end_event(self, event, state):
-        if event.tid not in state or event.eventid not in state[event.tid]:
+        tid_state = state.get(event.tid)
+        if tid_state is None or event.eventid not in tid_state:
             # Event end without start.
             return
 
-        for eventid in state[event.tid]:
-            state[event.tid][eventid].append(event)
+        for events in tid_state.values():
+            events.append(event)
 
-        events = state[event.tid].pop(event.eventid)
+        events = tid_state.pop(event.eventid)
         return self.parse_event_list(events)
 
     def _feed_single_event(self, event, state):
-        for eventid in state.get(event.tid, {}):
-            state[event.tid][eventid].append(event)
+        tid_state = state.get(event.tid)
+        if tid_state:
+            for events in tid_state.values():
+                events.append(event)
         return self.parse_event_list([event])

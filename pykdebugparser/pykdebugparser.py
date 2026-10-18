@@ -1,5 +1,6 @@
 from datetime import datetime
 import io
+import math
 
 from pygments import highlight, lexers, formatters
 from termcolor import colored
@@ -25,6 +26,8 @@ class PyKdebugParser:
         self.filter_process = None
         self.filter_class = []
         self.filter_subclass = []
+        # Event ids (debugids without the function qualifier) to include, on top of the class/subclass filters.
+        self.filter_eventid = set()
         self.show_timestamp = True
         self.show_name = True
         self.show_func_qual = True
@@ -41,15 +44,29 @@ class PyKdebugParser:
         self.pids_names = {}
         self.dyld_addresses = []
         self.dyld_uuids = []
+        self._timestamp_cache = None
 
     def kevents(self, kdebug: io.IOBase):
         events_generator = KdBufParser(self.threads_pids, self.pids_names).parse(kdebug)
-        events_generator = filter(lambda e: not isinstance(e, OsLogEvent), events_generator)
-        if self.filter_tid is not None:
-            events_generator = filter(lambda e: e.tid == self.filter_tid, events_generator)
-        if self.filter_class or self.filter_subclass:
-            events_generator = filter(lambda e: self._is_eventid_allowed(e.eventid), events_generator)
-        return events_generator
+        return self._filter_kevents(events_generator, self.filter_tid is not None,
+                                    bool(self.filter_class or self.filter_subclass or self.filter_eventid))
+
+    def _filter_kevents(self, events_generator, by_tid, by_class):
+        # A single generator instead of a `filter` chain, avoiding a lambda call per kevent per filter.
+        filter_class = self.filter_class
+        filter_subclass = self.filter_subclass
+        filter_eventid = set(self.filter_eventid)
+        for event in events_generator:
+            if isinstance(event, OsLogEvent):
+                continue
+            if by_tid and event.tid != self.filter_tid:
+                continue
+            if by_class:
+                eventid = event.eventid
+                if not ((eventid >> 24 in filter_class) or (eventid >> 16 in filter_subclass)
+                        or eventid in filter_eventid):
+                    continue
+            yield event
 
     def formatted_kevents(self, kdebug: io.IOBase, trace_codes=None):
         trace_codes_map = default_trace_codes() if trace_codes is None else trace_codes
@@ -58,11 +75,12 @@ class PyKdebugParser:
     def traces(self, kdebug: io.IOBase, trace_codes=None):
         trace_codes_map = default_trace_codes() if trace_codes is None else trace_codes
 
-        has_filters = self.filter_class or self.filter_subclass
+        has_filters = self.filter_class or self.filter_subclass or self.filter_eventid
         add_trace_class = has_filters and DBG_TRACE not in self.filter_class
         if add_trace_class:
             self.filter_class.append(DBG_TRACE)
-        has_bsd = DBG_BSD in self.filter_class or any(filter(lambda sc: sc >> 8 == DBG_BSD, self.filter_subclass))
+        has_bsd = (DBG_BSD in self.filter_class or any(sc >> 8 == DBG_BSD for sc in self.filter_subclass)
+                   or any(eventid >> 24 == DBG_BSD for eventid in self.filter_eventid))
         add_fs_class = has_filters and has_bsd and DBG_FSYSTEM not in self.filter_class
         if add_fs_class:
             self.filter_class.append(DBG_FSYSTEM)
@@ -113,9 +131,22 @@ class PyKdebugParser:
         offset_usec = (
                 ((timestamp - self.mach_absolute_time) * self.numer) / (self.denom * 1000)
         )
-        ts = datetime.fromtimestamp((self.usecs_since_epoch + offset_usec) / 1000000, tz=self.timezone)
-        time_string = ts.strftime('%Y-%m-%d %H:%M:%S.%f')
-        return f'{time_string:<27}'
+        posix_time = (self.usecs_since_epoch + offset_usec) / 1000000
+        # Split to seconds and microseconds exactly like `datetime.fromtimestamp` does (round half to even), so
+        # the date and time part can be formatted only once per second.
+        fraction, seconds = math.modf(posix_time)
+        microseconds = round(fraction * 1000000)
+        if microseconds >= 1000000:
+            microseconds -= 1000000
+            seconds += 1.0
+        elif microseconds < 0:
+            microseconds += 1000000
+            seconds -= 1.0
+        cache = self._timestamp_cache
+        if cache is None or cache[0] != seconds or cache[1] is not self.timezone:
+            prefix = datetime.fromtimestamp(seconds, tz=self.timezone).strftime('%Y-%m-%d %H:%M:%S.')
+            cache = self._timestamp_cache = (seconds, self.timezone, prefix)
+        return f'{cache[2]}{microseconds:06d}'.ljust(27)
 
     def _format_process(self, tid):
         pid = self.threads_pids.get(tid, -1)
@@ -184,4 +215,5 @@ class PyKdebugParser:
         return event_rep
 
     def _is_eventid_allowed(self, event_id):
-        return (event_id >> 24 in self.filter_class) or (event_id >> 16 in self.filter_subclass)
+        return ((event_id >> 24 in self.filter_class) or (event_id >> 16 in self.filter_subclass)
+                or event_id in self.filter_eventid)

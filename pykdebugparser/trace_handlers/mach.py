@@ -4,6 +4,8 @@ from enum import Enum
 from functools import partial
 from typing import List
 
+from pykdebugparser.trace_handlers import parse_enum
+
 
 class AsynchronousSystemTrapsReason(Enum):
     AST_NONE = 0x00
@@ -31,11 +33,15 @@ class AsynchronousSystemTrapsReason(Enum):
     AST_UNQUIESCE = 0x200000
 
 
+# Pairs of (member, value), accessing `.value` through the enum descriptor is slow.
+_ASYNCHRONOUS_SYSTEM_TRAPS_REASON_VALUES = [(m, m.value) for m in AsynchronousSystemTrapsReason]
+
+
 def to_ast_reasons(flags: int):
     if not flags:
         return [AsynchronousSystemTrapsReason.AST_NONE]
     else:
-        return [r for r in AsynchronousSystemTrapsReason if r.value & flags]
+        return [r for r, value in _ASYNCHRONOUS_SYSTEM_TRAPS_REASON_VALUES if value & flags]
 
 
 # osfmk/arm64/proc_reg.h
@@ -86,8 +92,11 @@ class ThreadState(Enum):
     TH_IDLE = 0x80
 
 
+_THREAD_STATE_VALUES = [(m, m.value) for m in ThreadState]
+
+
 def to_thread_state(flags: int):
-    return [s for s in ThreadState if s.value & flags]
+    return [s for s, value in _THREAD_STATE_VALUES if value & flags]
 
 
 class InterruptType(Enum):
@@ -134,11 +143,14 @@ class VmProtection(Enum):
     VM_PROT_STRIP_READ = 0x80
 
 
+_VM_PROTECTION_VALUES = [(m, m.value) for m in VmProtection]
+
+
 def to_vm_prot(flags: int):
     if not flags:
         return [VmProtection.VM_PROT_NONE]
     else:
-        return [p for p in VmProtection if p.value & flags]
+        return [p for p, value in _VM_PROTECTION_VALUES if value & flags]
 
 
 # osfmk/mach/port.h
@@ -309,7 +321,7 @@ class Interrupt:
     type: int
 
     def __str__(self):
-        return f'INTERRUPT, pc: {hex(self.pc)}, is_user: {self.is_user}, type: {InterruptType(self.type).name}'
+        return f'INTERRUPT, pc: {hex(self.pc)}, is_user: {self.is_user}, type: {parse_enum(InterruptType, self.type).name}'
 
 
 @dataclass
@@ -1047,7 +1059,7 @@ def handle_msc_mach_vm_map_trap(parser, events):
 
 def handle_msc_mach_port_allocate_trap(parser, events):
     args = events[0].values
-    return MachPortAllocate(events, args[0], MachPortRight(args[1]), args[2])
+    return MachPortAllocate(events, args[0], parse_enum(MachPortRight, args[1]), args[2])
 
 
 def handle_msc_mach_port_deallocate_trap(parser, events):
@@ -1056,11 +1068,11 @@ def handle_msc_mach_port_deallocate_trap(parser, events):
 
 def handle_msc_mach_port_mod_refs_trap(parser, events):
     args = events[0].values
-    return MachPortModRefs(events, args[0], args[1], MachPortRight(args[2]), args[3])
+    return MachPortModRefs(events, args[0], args[1], parse_enum(MachPortRight, args[2]), args[3])
 
 
 def handle_msc_mach_port_insert_right_trap(parser, events):
-    return MachPortInsertRight(events, *events[0].values[:3], MachMsgTypeName(events[0].values[3]))
+    return MachPortInsertRight(events, *events[0].values[:3], parse_enum(MachMsgTypeName, events[0].values[3]))
 
 
 def handle_msc_mach_port_insert_member_trap(parser, events):
@@ -1105,12 +1117,12 @@ def handle_msc_semaphore_wait_trap(parser, events):
 
 def handle_msc_semaphore_timedwait_trap(parser, events):
     args = events[0].values
-    return SemaphoreTimedwait(events, args[0], args[1] & 0xffffffff, args[2], KernReturn(events[-1].values[0]))
+    return SemaphoreTimedwait(events, args[0], args[1] & 0xffffffff, args[2], parse_enum(KernReturn, events[-1].values[0]))
 
 
 def handle_msc_mach_port_get_attributes_trap(parser, events):
     args = events[0].values
-    return MachPortGetAttributes(events, *args[:2], MachPortFlavor(args[2]), args[3])
+    return MachPortGetAttributes(events, *args[:2], parse_enum(MachPortFlavor, args[2]), args[3])
 
 
 def handle_msc_mach_port_guard_trap(parser, events):
@@ -1135,7 +1147,7 @@ def handle_msc_thread_get_special_reply_port(parser, events):
 
 def handle_msc_thread_switch(parser, events):
     args = events[0].values
-    return ThreadSwitch(events, args[0], SwitchOption(args[1]), args[2])
+    return ThreadSwitch(events, args[0], parse_enum(SwitchOption, args[1]), args[2])
 
 
 def handle_msc_host_create_mach_voucher_trap(parser, events):
@@ -1176,7 +1188,7 @@ def handle_msc_mk_timer_cancel(parser, events):
 
 def handle_msc_mk_timer_arm_leeway(parser, events):
     args = events[0].values
-    return MkTimerArmLeeway(events, args[0], MkTimerFlags(args[1]), args[2], args[3])
+    return MkTimerArmLeeway(events, args[0], parse_enum(MkTimerFlags, args[1]), args[2], args[3])
 
 
 def handle_msc_iokit_user_client(parser, events):
@@ -1200,7 +1212,7 @@ def handle_mach_vmfault(parser, events):
     pid = None
     caller_prot = None
     if result == 0:
-        fault_type = DbgVmFaultType(rets[3])
+        fault_type = parse_enum(DbgVmFaultType, rets[3])
         real_events = [e for e in events[1:-1] if 0x1320008 <= e.eventid <= 0x1320014]
         if real_events:
             vm_fault_real = parser.parse_event_list(real_events)
@@ -1212,7 +1224,7 @@ def handle_mach_vmfault(parser, events):
 def handle_real_fault_address(addr_type, parser, events):
     args = events[0].values
     caller_prot = to_vm_prot((args[1] >> 8) & 0xff)
-    fault_type = DbgVmFaultType(args[1] & 0xff)
+    fault_type = parse_enum(DbgVmFaultType, args[1] & 0xff)
     return addr_type(events, args[0], args[1] >> 16, caller_prot, fault_type, args[2], args[3])
 
 
@@ -1233,7 +1245,7 @@ def handle_mach_mkrunnable(parser, events):
 
 def handle_mach_idle(parser, events):
     args = events[-1].values
-    return MachIdle(events, args[0], ProcessState(args[1]), args[2], to_ast_reasons(args[3]))
+    return MachIdle(events, args[0], parse_enum(ProcessState, args[1]), args[2], to_ast_reasons(args[3]))
 
 
 def handle_mach_block(parser, events):

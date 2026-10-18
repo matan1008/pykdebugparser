@@ -5,6 +5,9 @@ import struct
 KDBG_EVENTID_MASK = 0xfffffffc
 KDBG_FUNC_MASK = 0x00000003
 KD_BUF_FORMAT = '<Q32sQIIQ'
+# Same layout as `KD_BUF_FORMAT`, with the 32 bytes of arguments unpacked as 4 64-bit values.
+KD_BUF_STRUCT = struct.Struct('<QQQQQQIIQ')
+KD_BUF_SIZE = KD_BUF_STRUCT.size
 Kevent = namedtuple('Kevent', ['timestamp', 'data', 'values', 'tid', 'debugid', 'eventid', 'func_qualifier'])
 
 
@@ -24,8 +27,20 @@ def from_kd_buf(kd_buf: bytes) -> Kevent:
     :param kd_buf: Buffer of kd_buf kevent's struct.
     :return: Parsed kevent.
     """
-    timestamp, args_buf, tid, debugid, cpuid, unused = struct.unpack(KD_BUF_FORMAT, kd_buf)
-    eventid = debugid & KDBG_EVENTID_MASK
-    qual = debugid & KDBG_FUNC_MASK
-    args = struct.unpack('<QQQQ', args_buf)  # There are 4 arguments, 64 bit each.
-    return Kevent(timestamp, args_buf, args, tid, debugid, eventid, qual)
+    timestamp, arg0, arg1, arg2, arg3, tid, debugid, cpuid, unused = KD_BUF_STRUCT.unpack(kd_buf)
+    return Kevent(timestamp, kd_buf[8:40], (arg0, arg1, arg2, arg3), tid, debugid, debugid & KDBG_EVENTID_MASK,
+                  debugid & KDBG_FUNC_MASK)
+
+
+def from_kd_bufs(kd_bufs: bytes):
+    """
+    Create Kevent objects from consecutive kd_buf kevent's structs.
+    :param kd_bufs: Buffer of kd_buf kevent's structs, its length must be a multiple of the struct size.
+    :return: Generator of parsed kevents.
+    """
+    new_kevent = tuple.__new__  # Skips the namedtuple's Python-level __new__, the result is identical.
+    offset = 8
+    for timestamp, arg0, arg1, arg2, arg3, tid, debugid, cpuid, unused in KD_BUF_STRUCT.iter_unpack(kd_bufs):
+        yield new_kevent(Kevent, (timestamp, kd_bufs[offset:offset + 32], (arg0, arg1, arg2, arg3), tid, debugid,
+                                  debugid & KDBG_EVENTID_MASK, debugid & KDBG_FUNC_MASK))
+        offset += KD_BUF_SIZE

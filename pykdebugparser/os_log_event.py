@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import enum
 from typing import List, Dict
 
-from construct import Struct, Byte, Int32ul, BitStruct, Padding, Flag, BitsInteger, Int64ul
+from bytestruct import U64_LE, BinaryStruct, u8, u32
 
 
 class OsLogType(enum.Enum):
@@ -81,7 +81,7 @@ class FirehoseTracepointSignpostType(enum.IntFlag):
     scope_system = 0xc0
 
 
-class FirehoseTracepointSingpostFlags(enum.Enum):
+class FirehoseTracepointSingpostFlags(enum.IntFlag):
     has_private_data = 1
     has_subsystem = 2
     has_rules = 4
@@ -100,22 +100,24 @@ tracepoint_types = {
 
 tracepoint_flags = {
     FirehoseTracepointNamespace.log: FirehoseTracepointLogFlags,
-    FirehoseTracepointNamespace.trace: FirehoseTracepointSingpostFlags,
+    FirehoseTracepointNamespace.signpost: FirehoseTracepointSingpostFlags,
 }
 
-firehose_tracepoint_id = Struct(
-    'namespace' / Byte,
-    'type_' / Byte,
-    'trace_flags' / BitStruct(
-        Padding(2),
-        'has_large_offset' / Flag,
-        'has_unique_pid' / Flag,
-        'pc_style' / BitsInteger(3),
-        'has_current_aid' / Flag,
-    ),
-    'flags' / Byte,
-    'code' / Int32ul,
-)
+# `trace_flags` bits.
+TRACE_FLAGS_HAS_LARGE_OFFSET = 0x20
+TRACE_FLAGS_HAS_UNIQUE_PID = 0x10
+TRACE_FLAGS_PC_STYLE_SHIFT = 1
+TRACE_FLAGS_PC_STYLE_MASK = 0x7
+TRACE_FLAGS_HAS_CURRENT_AID = 0x01
+
+
+@dataclass
+class FirehoseTracepointId(BinaryStruct, byte_order='<'):
+    namespace: u8
+    type_: u8
+    trace_flags: u8
+    flags: u8
+    code: u32
 
 
 @dataclass
@@ -262,7 +264,8 @@ class OsLogEvent:
 
     @classmethod
     def parse_trace_identifier(cls, trace_identifier):
-        trace_id = firehose_tracepoint_id.parse(Int64ul.build(trace_identifier))
+        trace_id = FirehoseTracepointId.parse(U64_LE.build(trace_identifier))
+        trace_flags = trace_id.trace_flags
         trace_namespace = FirehoseTracepointNamespace(trace_id.namespace)
         if trace_namespace in tracepoint_types:
             type_ = tracepoint_types[trace_namespace](trace_id.type_)
@@ -275,10 +278,10 @@ class OsLogEvent:
         return TraceIdentifier(
             namespace=trace_namespace,
             type_=type_,
-            has_large_offset=trace_id.trace_flags.has_large_offset,
-            has_unique_pid=trace_id.trace_flags.has_unique_pid,
-            pc_style=FirehoseTracepointFlagsPcStyle(trace_id.trace_flags.pc_style),
-            has_current_aid=trace_id.trace_flags.has_current_aid,
+            has_large_offset=bool(trace_flags & TRACE_FLAGS_HAS_LARGE_OFFSET),
+            has_unique_pid=bool(trace_flags & TRACE_FLAGS_HAS_UNIQUE_PID),
+            pc_style=FirehoseTracepointFlagsPcStyle((trace_flags >> TRACE_FLAGS_PC_STYLE_SHIFT) & TRACE_FLAGS_PC_STYLE_MASK),
+            has_current_aid=bool(trace_flags & TRACE_FLAGS_HAS_CURRENT_AID),
             flags=tracepoint_flags[trace_namespace](
                 trace_id.flags) if trace_namespace in tracepoint_flags else None,
             code=trace_id.code,

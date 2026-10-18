@@ -7,6 +7,8 @@ from signal import Signals
 import socket
 from typing import List
 
+from pykdebugparser.trace_handlers import parse_enum
+
 IOC_REQUEST_PARAMS = {
     0x20000000: 'IOC_VOID',
     0x40000000: 'IOC_OUT',
@@ -270,7 +272,7 @@ class SocketOptionName(enum.Enum):
 
 def sockopt_format_level_and_option(level, option_name):
     if level == socket.SOL_SOCKET:
-        return 'SOL_SOCKET', SocketOptionName(option_name).name
+        return 'SOL_SOCKET', parse_enum(SocketOptionName, option_name).name
     else:
         return level, option_name
 
@@ -5151,7 +5153,7 @@ def handle_getgid(parser, events):
 
 def handle_sigprocmask(parser, events):
     args = events[0].values
-    return BscSigprocmap(events, SigprocmaskFlags(args[0]), args[1], args[2], serialize_result(events[-1]))
+    return BscSigprocmap(events, parse_enum(SigprocmaskFlags, args[0]), args[1], args[2], serialize_result(events[-1]))
 
 
 def handle_getlogin(parser, events):
@@ -5282,7 +5284,7 @@ def handle_sys_dup2(parser, events):
 
 def handle_sys_fcntl(parser, events, no_cancel=False):
     args = events[0].values
-    return BscSysFcntl(events, args[0], FcntlCmd(args[1]), args[2], serialize_result(events[-1], 'return'),
+    return BscSysFcntl(events, args[0], parse_enum(FcntlCmd, args[1]), args[2], serialize_result(events[-1], 'return'),
                        no_cancel)
 
 
@@ -5297,13 +5299,13 @@ def handle_fsync(parser, events, no_cancel=False):
 
 def handle_setpriority(parser, events):
     args = events[0].values
-    return BscSetpriority(events, PriorityWhich(args[0]), args[1], args[2], serialize_result(events[-1]))
+    return BscSetpriority(events, parse_enum(PriorityWhich, args[0]), args[1], args[2], serialize_result(events[-1]))
 
 
 def handle_socket(parser, events):
     args = events[0].values
-    return BscSocket(events, socket.AddressFamily(args[0]), socket.SocketKind(args[1]), args[2],
-                     serialize_result(events[-1], 'fd'))
+    return BscSocket(events, parse_enum(socket.AddressFamily, args[0]), parse_enum(socket.SocketKind, args[1]),
+                     args[2], serialize_result(events[-1], 'fd'))
 
 
 def handle_connect(parser, events, no_cancel=False):
@@ -5313,7 +5315,7 @@ def handle_connect(parser, events, no_cancel=False):
 
 def handle_getpriority(parser, events):
     args = events[0].values
-    return BscGetpriority(events, PriorityWhich(args[0]), args[1], serialize_result(events[-1], 'priority'))
+    return BscGetpriority(events, parse_enum(PriorityWhich, args[0]), args[1], serialize_result(events[-1], 'priority'))
 
 
 def handle_bind(parser, events):
@@ -5342,7 +5344,7 @@ def handle_gettimeofday(parser, events):
 
 def handle_getrusage(parser, events):
     args = events[0].values
-    return BscGetrusage(events, RusageWho(ctypes.c_int32(args[0]).value), args[1], serialize_result(events[-1]))
+    return BscGetrusage(events, parse_enum(RusageWho, ctypes.c_int32(args[0]).value), args[1], serialize_result(events[-1]))
 
 
 def handle_getsockopt(parser, events):
@@ -5415,8 +5417,8 @@ def handle_shutdown(parser, events):
 
 def handle_socketpair(parser, events):
     args = events[0].values
-    return BscSocketpair(events, socket.AddressFamily(args[0]), socket.SocketKind(args[1]), args[2], args[3],
-                         serialize_result(events[-1]))
+    return BscSocketpair(events, parse_enum(socket.AddressFamily, args[0]), parse_enum(socket.SocketKind, args[1]),
+                         args[2], args[3], serialize_result(events[-1]))
 
 
 def handle_mkdir(parser, events):
@@ -5517,12 +5519,12 @@ def handle_mount(parser, events):
 
 def handle_csops(parser, events):
     args = events[0].values
-    return BscCsops(events, args[0], CsopsOps(args[1]), args[2], args[3], serialize_result(events[-1]))
+    return BscCsops(events, args[0], parse_enum(CsopsOps, args[1]), args[2], args[3], serialize_result(events[-1]))
 
 
 def handle_csops_audittoken(parser, events):
     args = events[0].values
-    return BscCsopsAudittoken(events, args[0], CsopsOps(args[1]), args[2], args[3], serialize_result(events[-1]))
+    return BscCsopsAudittoken(events, args[0], parse_enum(CsopsOps, args[1]), args[2], args[3], serialize_result(events[-1]))
 
 
 def handle_waitid(parser, events, no_cancel=False):
@@ -5969,7 +5971,7 @@ def handle_semwait_signal(parser, events, no_cancel=False):
 
 def handle_proc_info(parser, events):
     args = events[0].values
-    return BscProcInfo(events, ProcInfoCall(args[0]), args[1], args[2], args[3], serialize_result(events[-1]))
+    return BscProcInfo(events, parse_enum(ProcInfoCall, args[0]), args[1], args[2], args[3], serialize_result(events[-1]))
 
 
 def handle_sendfile(parser, events):
@@ -6199,8 +6201,8 @@ def handle_peeloff(parser, events):
 
 def handle_socket_delegate(parser, events):
     args = events[0].values
-    return BscSocketDelegate(events, socket.AddressFamily(args[0]), socket.SocketKind(args[1]), args[2], args[3],
-                             serialize_result(events[-1], 'fd'))
+    return BscSocketDelegate(events, parse_enum(socket.AddressFamily, args[0]),
+                             parse_enum(socket.SocketKind, args[1]), args[2], args[3], serialize_result(events[-1], 'fd'))
 
 
 def handle_telemetry(parser, events):
@@ -6543,7 +6545,8 @@ def handle_fs_snapshot(parser, events):
     nodes = parser.parse_vnodes(events)
     name2 = nodes[1].path if len(nodes) > 1 else ''
     args = events[0].values
-    return BscFsSnapshot(events, FsSnapshotOp(args[0]), args[1], nodes[0].path, name2, serialize_result(events[-1]))
+    return BscFsSnapshot(events, parse_enum(FsSnapshotOp, args[0]), args[1], nodes[0].path, name2,
+                         serialize_result(events[-1]))
 
 
 def handle_terminate_with_payload(parser, events):
