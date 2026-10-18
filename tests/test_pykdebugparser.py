@@ -146,3 +146,21 @@ def test_traces_filter_eventid_with_subclass():
     assert len(traces) == 2
     assert traces[0].endswith('open("/usr/libexec/xpcproxy", O_RDONLY), fd: 3')
     assert traces[1].endswith('read(3, 0x16b000000, 10), count: 10')
+
+
+def test_traces_filter_eventid_without_handler():
+    events = [
+        _kd_buf(1000, 0x1400120 | 1),  # MACH_SCHED_THREAD_SELECT start
+        _kd_buf(1001, 0x1400120 | 2, (467, 0, 0, 4)),  # MACH_SCHED_THREAD_SELECT end
+        _kd_buf(1002, 0x1400140, (0, 3, 0, 0)),  # MACH_PSET_AVG_EXEC_TIME
+    ]
+    events_buf = RAW_VERSION2_BYTES + b'\x00' * 0x11c + b''.join(events)
+    parser = _traces_parser()
+    parser.filter_class = [1]
+    assert list(parser.formatted_traces(BytesIO(events_buf))) == []
+    parser = _traces_parser()
+    parser.filter_eventid = {0x1400120, 0x1400140}
+    traces = list(parser.formatted_traces(BytesIO(events_buf)))
+    assert len(traces) == 2
+    assert traces[0].endswith('MACH_SCHED_THREAD_SELECT(0x0, 0x0, 0x0, 0x0), end: (0x1d3, 0x0, 0x0, 0x4)')
+    assert traces[1].endswith('MACH_PSET_AVG_EXEC_TIME(0x0, 0x3, 0x0, 0x0)')

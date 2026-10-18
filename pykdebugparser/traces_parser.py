@@ -1,4 +1,6 @@
 from collections import namedtuple
+from dataclasses import dataclass
+from typing import List
 
 from pykdebugparser.kevent import DgbFuncQual
 from pykdebugparser.trace_handlers.bsd import handlers as bsd_handlers
@@ -10,6 +12,21 @@ from pykdebugparser.trace_handlers.trace import handlers as trace_handlers
 from pykdebugparser.trace_handlers.turnstile import handlers as turnstile_handlers
 
 Vnode = namedtuple('Vnode', ['ktraces', 'vnode_id', 'path'])
+
+
+@dataclass
+class RawTrace:
+    """
+    An event without a handler, shown by its trace code name and raw values.
+    """
+    ktraces: List
+    name: str
+
+    def __str__(self):
+        rep = f'{self.name}({", ".join(map(hex, self.ktraces[0].values))})'
+        if len(self.ktraces) > 1:
+            rep += f', end: ({", ".join(map(hex, self.ktraces[-1].values))})'
+        return rep
 
 
 class TracesParser:
@@ -29,6 +46,8 @@ class TracesParser:
         }
         self.last_data_newthread = None
         self.last_data_exec = None
+        # Event ids to show as `RawTrace` when they have no handler.
+        self.raw_eventids = set()
         self.handlers = {}
         self.handlers.update(bsd_handlers)
         self.handlers.update(dyld_handlers)
@@ -58,7 +77,7 @@ class TracesParser:
             return None
         handler = self.handlers.get(trace_name)
         if handler is None:
-            return None
+            return RawTrace(events, trace_name) if events[0].eventid in self.raw_eventids else None
         return handler(self, events)
 
     @staticmethod
