@@ -27,6 +27,7 @@ class PyKdebugParser:
         self.filter_class = []
         self.filter_subclass = []
         # Event ids (debugids without the function qualifier) to include, on top of the class/subclass filters.
+        # Those without a handler are shown by name and raw values.
         self.filter_eventid = set()
         self.show_timestamp = True
         self.show_name = True
@@ -86,6 +87,7 @@ class PyKdebugParser:
             self.filter_class.append(DBG_FSYSTEM)
 
         traces_parser = TracesParser(trace_codes_map, self.threads_pids, self.pids_names)
+        traces_parser.raw_eventids = set(self.filter_eventid)
         trace_generator = traces_parser.feed_generator(self.kevents(kdebug))
 
         if self.filter_process is not None:
