@@ -2,10 +2,10 @@ from datetime import datetime
 import io
 import math
 
-from pygments import highlight, lexers, formatters
 from termcolor import colored
 
 from pykdebugparser.callstacks_parser import CallstacksParser
+from pykdebugparser.highlight import highlight
 from pykdebugparser.kd_buf_parser import KdBufParser
 from pykdebugparser.kevent import DgbFuncQual
 from pykdebugparser.trace_codes import default_trace_codes
@@ -13,8 +13,6 @@ from pykdebugparser.trace_handlers.trace import TRACE_LOST_EVENTS
 from pykdebugparser.traces_parser import TracesParser
 from pykdebugparser.os_log_event import OsLogEvent
 
-c_lexer = lexers.CLexer()
-color_formatter = formatters.TerminalTrueColorFormatter(style='stata-dark')
 
 DBG_TRACE = 7
 DBG_FSYSTEM = 3
@@ -190,7 +188,7 @@ class PyKdebugParser:
             formatted_data += f'{self._format_process(tid):<34}'
         event_rep = str(trace)
         if self.color:
-            event_rep = highlight(event_rep, c_lexer, color_formatter).strip()
+            event_rep = highlight(event_rep)
 
         return formatted_data + event_rep
 
