@@ -26,6 +26,8 @@ class PyKdebugParser:
         self.filter_process = None
         self.filter_class = []
         self.filter_subclass = []
+        # Event ids (debugids without the function qualifier) to include, on top of the class/subclass filters.
+        self.filter_eventid = set()
         self.show_timestamp = True
         self.show_name = True
         self.show_func_qual = True
@@ -47,12 +49,13 @@ class PyKdebugParser:
     def kevents(self, kdebug: io.IOBase):
         events_generator = KdBufParser(self.threads_pids, self.pids_names).parse(kdebug)
         return self._filter_kevents(events_generator, self.filter_tid is not None,
-                                    bool(self.filter_class or self.filter_subclass))
+                                    bool(self.filter_class or self.filter_subclass or self.filter_eventid))
 
     def _filter_kevents(self, events_generator, by_tid, by_class):
         # A single generator instead of a `filter` chain, avoiding a lambda call per kevent per filter.
         filter_class = self.filter_class
         filter_subclass = self.filter_subclass
+        filter_eventid = set(self.filter_eventid)
         for event in events_generator:
             if isinstance(event, OsLogEvent):
                 continue
@@ -60,7 +63,8 @@ class PyKdebugParser:
                 continue
             if by_class:
                 eventid = event.eventid
-                if not ((eventid >> 24 in filter_class) or (eventid >> 16 in filter_subclass)):
+                if not ((eventid >> 24 in filter_class) or (eventid >> 16 in filter_subclass)
+                        or eventid in filter_eventid):
                     continue
             yield event
 
@@ -71,11 +75,12 @@ class PyKdebugParser:
     def traces(self, kdebug: io.IOBase, trace_codes=None):
         trace_codes_map = default_trace_codes() if trace_codes is None else trace_codes
 
-        has_filters = self.filter_class or self.filter_subclass
+        has_filters = self.filter_class or self.filter_subclass or self.filter_eventid
         add_trace_class = has_filters and DBG_TRACE not in self.filter_class
         if add_trace_class:
             self.filter_class.append(DBG_TRACE)
-        has_bsd = DBG_BSD in self.filter_class or any(filter(lambda sc: sc >> 8 == DBG_BSD, self.filter_subclass))
+        has_bsd = (DBG_BSD in self.filter_class or any(sc >> 8 == DBG_BSD for sc in self.filter_subclass)
+                   or any(eventid >> 24 == DBG_BSD for eventid in self.filter_eventid))
         add_fs_class = has_filters and has_bsd and DBG_FSYSTEM not in self.filter_class
         if add_fs_class:
             self.filter_class.append(DBG_FSYSTEM)
@@ -210,4 +215,5 @@ class PyKdebugParser:
         return event_rep
 
     def _is_eventid_allowed(self, event_id):
-        return (event_id >> 24 in self.filter_class) or (event_id >> 16 in self.filter_subclass)
+        return ((event_id >> 24 in self.filter_class) or (event_id >> 16 in self.filter_subclass)
+                or event_id in self.filter_eventid)

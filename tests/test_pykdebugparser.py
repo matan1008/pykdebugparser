@@ -7,6 +7,7 @@ import pytest
 from pykdebugparser.kd_buf_parser import RAW_VERSION2_BYTES
 from pykdebugparser.kevent import Kevent
 from pykdebugparser.pykdebugparser import PyKdebugParser
+from pykdebugparser.trace_codes import syscall_eventids
 
 
 def test_kevents():
@@ -102,3 +103,46 @@ def test_format_timestamp(tz, usecs_since_epoch):
         offset_usec = ((timestamp - parser.mach_absolute_time) * parser.numer) / (parser.denom * 1000)
         expected = datetime.fromtimestamp((parser.usecs_since_epoch + offset_usec) / 1000000, tz=tz)
         assert parser._format_timestamp(timestamp) == f"{expected.strftime('%Y-%m-%d %H:%M:%S.%f'):<27}"
+
+
+def _kd_buf(timestamp, debugid, values=(0, 0, 0, 0), data=None, tid=100):
+    data = struct.pack('<4Q', *values) if data is None else data
+    return struct.pack('<Q32sQIIQ', timestamp, data, tid, debugid, 0, 0)
+
+
+def _open_and_read_buf():
+    lookup = struct.pack('<Q', 0x1234) + b'/usr/libexec/xpcproxy'.ljust(24, b'\x00')
+    events = [
+        _kd_buf(1000, 0x40c0014 | 1, (0x16b000000, 0, 0, 0)),  # open(path, O_RDONLY) start
+        _kd_buf(1001, 0x3010090 | 3, data=lookup),  # VFS_LOOKUP (start and end)
+        _kd_buf(1002, 0x40c0014 | 2, (0, 3, 0, 0)),  # open end: fd 3
+        _kd_buf(1003, 0x40c000c | 1, (3, 0x16b000000, 10, 0)),  # read(3, buf, 10) start
+        _kd_buf(1004, 0x40c000c | 2, (0, 10, 0, 0)),  # read end: 10 bytes
+    ]
+    return RAW_VERSION2_BYTES + b'\x00' * 0x11c + b''.join(events)
+
+
+def _traces_parser():
+    parser = PyKdebugParser()
+    parser.color = False
+    parser.numer, parser.denom, parser.mach_absolute_time, parser.usecs_since_epoch = 1, 1, 0, 0
+    parser.timezone = timezone.utc
+    return parser
+
+
+def test_traces_filter_eventid():
+    parser = _traces_parser()
+    parser.filter_eventid = syscall_eventids(['open'])
+    traces = list(parser.formatted_traces(BytesIO(_open_and_read_buf())))
+    assert len(traces) == 1
+    assert traces[0].endswith('open("/usr/libexec/xpcproxy", O_RDONLY), fd: 3')
+
+
+def test_traces_filter_eventid_with_subclass():
+    parser = _traces_parser()
+    parser.filter_subclass = [0x40c]
+    parser.filter_eventid = syscall_eventids(['open'])
+    traces = list(parser.formatted_traces(BytesIO(_open_and_read_buf())))
+    assert len(traces) == 2
+    assert traces[0].endswith('open("/usr/libexec/xpcproxy", O_RDONLY), fd: 3')
+    assert traces[1].endswith('read(3, 0x16b000000, 10), count: 10')
