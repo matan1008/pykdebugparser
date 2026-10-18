@@ -1,4 +1,3 @@
 bytestruct>=0.1.0
-pygments
 click
 termcolor
