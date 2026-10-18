@@ -5304,8 +5304,8 @@ def handle_setpriority(parser, events):
 
 def handle_socket(parser, events):
     args = events[0].values
-    return BscSocket(events, socket.AddressFamily(args[0]), socket.SocketKind(args[1]), args[2],
-                     serialize_result(events[-1], 'fd'))
+    return BscSocket(events, parse_enum(socket.AddressFamily, args[0]), parse_enum(socket.SocketKind, args[1]),
+                     args[2], serialize_result(events[-1], 'fd'))
 
 
 def handle_connect(parser, events, no_cancel=False):
@@ -5417,8 +5417,8 @@ def handle_shutdown(parser, events):
 
 def handle_socketpair(parser, events):
     args = events[0].values
-    return BscSocketpair(events, socket.AddressFamily(args[0]), socket.SocketKind(args[1]), args[2], args[3],
-                         serialize_result(events[-1]))
+    return BscSocketpair(events, parse_enum(socket.AddressFamily, args[0]), parse_enum(socket.SocketKind, args[1]),
+                         args[2], args[3], serialize_result(events[-1]))
 
 
 def handle_mkdir(parser, events):
@@ -6201,8 +6201,8 @@ def handle_peeloff(parser, events):
 
 def handle_socket_delegate(parser, events):
     args = events[0].values
-    return BscSocketDelegate(events, socket.AddressFamily(args[0]), socket.SocketKind(args[1]), args[2], args[3],
-                             serialize_result(events[-1], 'fd'))
+    return BscSocketDelegate(events, parse_enum(socket.AddressFamily, args[0]),
+                             parse_enum(socket.SocketKind, args[1]), args[2], args[3], serialize_result(events[-1], 'fd'))
 
 
 def handle_telemetry(parser, events):
