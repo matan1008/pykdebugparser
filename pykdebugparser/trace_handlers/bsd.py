@@ -4326,20 +4326,6 @@ class BscFfsctl:
 
 
 @dataclass
-class BscNfsclnt:
-    ktraces: List
-    flags: int
-    argstructp: int
-    result: str
-
-    def __str__(self):
-        rep = f'nfsclnt({self.flags}, {hex(self.argstructp)})'
-        if self.result:
-            rep += f', {self.result}'
-        return rep
-
-
-@dataclass
 class BscFhopen:
     ktraces: List
     fhp: int
@@ -5750,11 +5736,6 @@ def handle_ffsctl(parser, events):
     return BscFfsctl(events, args[0], args[1], args[2], args[3], serialize_result(events[-1]))
 
 
-def handle_nfsclnt(parser, events):
-    args = events[0].values
-    return BscNfsclnt(events, args[0], args[1], serialize_result(events[-1]))
-
-
 def handle_fhopen(parser, events):
     args = events[0].values
     return BscFhopen(events, args[0], args[1], serialize_result(events[-1]))
@@ -6818,7 +6799,6 @@ handlers = {
     'BSC_initgroups': handle_initgroups,
     'BSC_posix_spawn': handle_posix_spawn,
     'BSC_ffsctl': handle_ffsctl,
-    'BSC_nfsclnt': handle_nfsclnt,
     'BSC_fhopen': handle_fhopen,
     'BSC_minherit': handle_minherit,
     'BSC_semsys': handle_semsys,
