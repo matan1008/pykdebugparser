@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from pykdebugparser.os_log_event import OsLogEvent, OsLogType, FirehoseTracepointNamespace, FirehoseTracepointLogType, \
-    FirehoseTracepointFlagsPcStyle, FirehoseTracepointLogFlags
+    FirehoseTracepointFlagsPcStyle, FirehoseTracepointLogFlags, FirehoseTracepointSignpostType, FirehoseTracepointSingpostFlags
 
 
 def test_parsing_raw_log_event():
@@ -280,6 +280,19 @@ def test_parse_trace_identifier_flags():
     assert trace_identifier.flags == (FirehoseTracepointLogFlags.has_private_data | FirehoseTracepointLogFlags.has_subsystem
                                       | FirehoseTracepointLogFlags.has_oversize)
     assert trace_identifier.code == 0x12345678
+
+
+def test_parse_trace_identifier_signpost_flags():
+    trace_identifier = OsLogEvent.parse_trace_identifier(0x12345678_82048106)
+    assert trace_identifier.namespace == FirehoseTracepointNamespace.signpost
+    assert trace_identifier.type_ == (FirehoseTracepointSignpostType.scope_process
+                                      | FirehoseTracepointSignpostType.interval_begin)
+    assert trace_identifier.flags == (FirehoseTracepointSingpostFlags.has_subsystem
+                                      | FirehoseTracepointSingpostFlags.has_name)
+
+
+def test_parse_trace_identifier_trace_has_no_flags():
+    assert OsLogEvent.parse_trace_identifier(0x12345678_01040003).flags is None
 
 
 @pytest.mark.parametrize('trace_identifier', [-1, 1 << 64])

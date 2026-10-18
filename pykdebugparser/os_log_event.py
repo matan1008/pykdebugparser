@@ -81,7 +81,7 @@ class FirehoseTracepointSignpostType(enum.IntFlag):
     scope_system = 0xc0
 
 
-class FirehoseTracepointSingpostFlags(enum.Enum):
+class FirehoseTracepointSingpostFlags(enum.IntFlag):
     has_private_data = 1
     has_subsystem = 2
     has_rules = 4
@@ -100,7 +100,7 @@ tracepoint_types = {
 
 tracepoint_flags = {
     FirehoseTracepointNamespace.log: FirehoseTracepointLogFlags,
-    FirehoseTracepointNamespace.trace: FirehoseTracepointSingpostFlags,
+    FirehoseTracepointNamespace.signpost: FirehoseTracepointSingpostFlags,
 }
 
 # `trace_flags` bits.
