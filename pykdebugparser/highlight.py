@@ -2,7 +2,7 @@
 
 Lines are colored with the terminal's 16 basic colors, so they follow its theme:
 
-- the call or event name at the start, bold;
+- the call or event name at the start, blue (not bold: on a dark theme bold reads as bright white);
 - strings (paths, symbols, ...), green;
 - numbers, cyan;
 - constants (flags, enums, signals: `O_RDONLY`, `KERN_SUCCESS`, `SIGKILL`), yellow;
@@ -15,11 +15,11 @@ import re
 from functools import lru_cache
 
 _RESET = '\x1b[0m'
-_BOLD = '\x1b[1m'
 _DIM = '\x1b[2m'
 _RED = '\x1b[31m'
 _GREEN = '\x1b[32m'
 _YELLOW = '\x1b[33m'
+_BLUE = '\x1b[34m'
 _CYAN = '\x1b[36m'
 
 _TOKEN = re.compile(
@@ -55,7 +55,7 @@ def highlight(text: str) -> str:
             error = value == 'errno:'
             out.append((_RED if error else _DIM) + value + _RESET)
         elif first:
-            out.append(_BOLD + value + _RESET)
+            out.append(_BLUE + value + _RESET)
         elif _CONSTANT.fullmatch(value):
             failed = error or (value.startswith('KERN_') and value not in _SUCCESS)
             out.append((_RED if failed else _YELLOW) + value + _RESET)
