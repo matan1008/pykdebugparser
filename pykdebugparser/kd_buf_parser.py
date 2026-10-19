@@ -20,6 +20,8 @@ ProcessData = namedtuple('ProcessData', ['pid', 'name'])
 RAW_VERSION_SIZE = 4
 RAW_VERSION2_BYTES = b'\x00\x02\xaa\x55'
 RAW_VERSION3_BYTES = b'\x00\x03\xaa\x55'
+# The events of a trace version 2 start at this alignment from the beginning of the trace.
+V2_EVENTS_ALIGNMENT = 0x1000
 # Header flag of a 64-bit kernel.
 KDBG_LP64 = 0x1
 TRACEV3_STACKSHOT_END = b'stackshot_out_fl'
@@ -113,19 +115,6 @@ def read_exactly(reader: io.IOBase, size: int) -> bytes:
     return data
 
 
-def skip_zeros(reader: io.IOBase):
-    """
-    Skip zero bytes in a stream, leaving it at the first non-zero byte (or at its end).
-    Reads a byte at a time and seeks back once, so a stream never consumes data past the zeros.
-    :param reader: Stream to skip in.
-    """
-    while True:
-        position = reader.tell()
-        if reader.read(1) != b'\x00':
-            reader.seek(position, 0)
-            return
-
-
 def parse_threadmap(data: bytes) -> list:
     """
     Parse consecutive threadmap entries, stopping at the first one that can't be parsed.
@@ -217,7 +206,11 @@ class KdBufParser:
         header = KdHeaderV2.parse(read_exactly(reader, KdHeaderV2.SIZE))
         self.set_thread_map([KdThreadmap.parse(read_exactly(reader, KdThreadmap.SIZE))
                              for _ in range(header.number_of_threads)])
-        skip_zeros(reader)
+        # The header and threadmap are padded to a 4 KiB boundary, and the padding is left uninitialized (it often
+        # holds stale data, such as trace codes text), so the events start at that boundary rather than at the first
+        # non-zero byte.
+        reader.read(-(RAW_VERSION_SIZE + KdHeaderV2.SIZE + header.number_of_threads * KdThreadmap.SIZE)
+                    % V2_EVENTS_ALIGNMENT)
         read1 = getattr(reader, 'read1', None)
         if read1 is None:
             # Without `read1` a bigger `read` might block until more data than currently available arrives.

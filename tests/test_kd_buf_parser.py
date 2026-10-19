@@ -4,7 +4,8 @@ import struct
 
 import pytest
 
-from pykdebugparser.kd_buf_parser import KdBufParser, KdHeaderV2, KdHeaderV3, RAW_VERSION2_BYTES, RAW_VERSION3_BYTES
+from pykdebugparser.kd_buf_parser import KdBufParser, KdHeaderV2, KdHeaderV3, RAW_VERSION2_BYTES, RAW_VERSION3_BYTES, \
+    V2_EVENTS_ALIGNMENT
 from pykdebugparser.os_log_event import OsLogEvent
 
 THREADMAP = [(0x1001, 100, b'launchd'), (0x1002, 200, b'SpringBoard'), (0x1003, 200, b'x' * 19)]
@@ -24,9 +25,15 @@ def v2_header(flags=1):
     return struct.pack('<IQIIQ', len(THREADMAP), 0, 0, flags, 24000000) + bytes(range(0x100))
 
 
-def v2_buf(padding, events):
-    header = RAW_VERSION2_BYTES + v2_header() + threadmap_bytes()
-    return header + b'\x00' * padding + b''.join(events)
+def v2_prefix():
+    return RAW_VERSION2_BYTES + v2_header() + threadmap_bytes()
+
+
+def v2_buf(events, padding=b'\x00'):
+    # kperf pads the header and threadmap to a 4 KiB boundary, and leaves the padding uninitialized.
+    prefix = v2_prefix()
+    size = -len(prefix) % V2_EVENTS_ALIGNMENT
+    return prefix + (padding * size)[:size] + b''.join(events)
 
 
 class _NoRead1Reader:
@@ -48,10 +55,11 @@ class _NoRead1Reader:
 
 
 @pytest.mark.parametrize('reader_type', [BytesIO, _NoRead1Reader])
-@pytest.mark.parametrize('padding', [0, 1, 7, 4096 - 0x120 - 4 - len(THREADMAP) * 32])
+# Stale trace codes text, as found in the padding of live traces.
+@pytest.mark.parametrize('padding', [b'\x00', b'0x40c0888\tBSC_tracker_action\n'])
 def test_parse_v2_threadmap(reader_type, padding):
     parser = KdBufParser()
-    events = list(parser.parse(reader_type(v2_buf(padding, [kd_buf(0x101, 0x1001), kd_buf(0x202, 0x1002)]))))
+    events = list(parser.parse(reader_type(v2_buf([kd_buf(0x101, 0x1001), kd_buf(0x202, 0x1002)], padding))))
     assert [(e.timestamp, e.tid) for e in events] == [(0x101, 0x1001), (0x202, 0x1002)]
     assert parser.threads_pids == {0x1001: 100, 0x1002: 200, 0x1003: 200}
     assert parser.pids_names == {100: 'launchd', 200: 'x' * 19}
@@ -65,9 +73,20 @@ def test_kd_header_v2(flags, is_64bit):
     assert header.is_64bit is is_64bit
 
 
+def test_parse_v2_first_event_starts_with_zero():
+    # The events start at the padding's end even when the first one starts with zero bytes.
+    events = list(KdBufParser().parse(BytesIO(v2_buf([kd_buf(0x100, 0x1001), kd_buf(0x200, 0x1002)]))))
+    assert [(e.timestamp, e.tid) for e in events] == [(0x100, 0x1001), (0x200, 0x1002)]
+
+
+@pytest.mark.parametrize('size', [len(v2_prefix()), len(v2_buf([])) - 1])
+def test_parse_v2_without_events(size):
+    assert list(KdBufParser().parse(BytesIO(v2_buf([])[:size]))) == []
+
+
 def test_parse_v2_truncated_threadmap():
     with pytest.raises(ValueError):
-        list(KdBufParser().parse(BytesIO(v2_buf(0, [])[:-1])))
+        list(KdBufParser().parse(BytesIO(v2_prefix()[:-1])))
 
 
 def block(tag, data, aligned=True):
