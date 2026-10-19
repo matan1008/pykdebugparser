@@ -1,4 +1,4 @@
-from pykdebugparser.trace_codes import from_trace_codes_text, syscall_eventids
+from pykdebugparser.trace_codes import default_trace_codes, from_trace_codes_text, syscall_eventids
 
 import pytest
 
@@ -24,3 +24,13 @@ def test_syscall_eventids():
 def test_syscall_eventids_unknown():
     with pytest.raises(ValueError, match='unknown syscalls: nosuch'):
         syscall_eventids(['open', 'nosuch'], {0x40c0014: 'BSC_open'})
+
+
+@pytest.mark.parametrize('eventid, name', [
+    (0x29000044, 'XPC_connection_send_message'),
+    (0x2e030004, 'DISPATCH_MACH_MSG_hdr_move'),
+    (0x211200d8, 'CFRL_IS_WAITING'),
+    (0x141300bc, 'CFRL_IS_CALLING_SOURCE1'),
+])
+def test_default_trace_codes_name_userspace_events(eventid, name):
+    assert default_trace_codes()[eventid] == name
