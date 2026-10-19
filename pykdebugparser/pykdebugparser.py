@@ -12,7 +12,8 @@ from pykdebugparser.kd_buf_parser import KdBufParser
 from pykdebugparser.kevent import DgbFuncQual
 from pykdebugparser.trace_codes import default_trace_codes
 from pykdebugparser.trace_handlers import UnknownEnumValue
-from pykdebugparser.trace_handlers.trace import TRACE_LOST_EVENTS
+from pykdebugparser.trace_handlers.trace import TRACE_DATA_EXEC, TRACE_DATA_NEWTHREAD, TRACE_DATA_THREAD_TERMINATE_PID, \
+    TRACE_LOST_EVENTS, TRACE_STRING_EXEC, TRACE_STRING_NEWTHREAD
 from pykdebugparser.traces_parser import TracesParser
 from pykdebugparser.os_log_event import OsLogEvent
 
@@ -74,6 +75,9 @@ class PyKdebugParser:
         self.dyld_addresses = []
         self.dyld_uuids = []
         self._timestamp_cache = None
+        # The process of the last TRACE_DATA_NEWTHREAD and TRACE_DATA_EXEC, named by the TRACE_STRING that follows.
+        self._newthread_pid = None
+        self._exec_pid = None
 
     def kevents(self, kdebug: io.IOBase):
         events_generator = KdBufParser(self.threads_pids, self.pids_names).parse(kdebug)
@@ -88,14 +92,37 @@ class PyKdebugParser:
         for event in events_generator:
             if isinstance(event, OsLogEvent):
                 continue
+            eventid = event.eventid
+            if eventid >> 24 == DBG_TRACE:
+                self._track_process(event)
             if by_tid and event.tid != self.filter_tid:
                 continue
             if by_class:
-                eventid = event.eventid
                 if not ((eventid >> 24 in filter_class) or (eventid >> 16 in filter_subclass)
                         or eventid in filter_eventid):
                     continue
             yield event
+
+    def _track_process(self, event):
+        """
+        Learn the threads and processes created after the threadmap was taken, so kevents of every thread name their
+        process, even when the TRACE kevents themselves are filtered out.
+        """
+        eventid = event.eventid
+        if eventid == TRACE_DATA_NEWTHREAD:
+            tid, self._newthread_pid = event.values[0], event.values[1]
+            self.threads_pids[tid] = self._newthread_pid
+        elif eventid == TRACE_STRING_NEWTHREAD:
+            if self._newthread_pid is not None:
+                self.pids_names[self._newthread_pid] = event.data.replace(b'\x00', b'').decode(errors='replace')
+        elif eventid == TRACE_DATA_EXEC:
+            self._exec_pid = event.values[0]
+            self.threads_pids[event.tid] = self._exec_pid
+        elif eventid == TRACE_STRING_EXEC:
+            if self._exec_pid is not None:
+                self.pids_names[self._exec_pid] = event.data.replace(b'\x00', b'').decode(errors='replace')
+        elif eventid == TRACE_DATA_THREAD_TERMINATE_PID:
+            self.threads_pids[event.tid] = event.values[0]
 
     def formatted_kevents(self, kdebug: io.IOBase, trace_codes=None):
         trace_codes_map = default_trace_codes() if trace_codes is None else trace_codes
