@@ -134,6 +134,26 @@ def _traces_parser():
     return parser
 
 
+@pytest.mark.parametrize('filter_class', [[], [0x33]])
+def test_kevents_name_processes_created_during_the_trace(filter_class):
+    # A thread created by pid 300 forks process 301, which execs: none of them are in the (empty) threadmap.
+    events = [
+        _kd_buf(1000, 0x7000004, (200, 300, 0, 0), tid=100),  # TRACE_DATA_NEWTHREAD: tid 200 of pid 300
+        _kd_buf(1001, 0x7010004, data=b'launchd'.ljust(32, b'\x00'), tid=100),  # TRACE_STRING_NEWTHREAD
+        _kd_buf(1002, 0x7000004, (201, 301, 0, 0), tid=200),  # TRACE_DATA_NEWTHREAD: tid 201 of pid 301
+        _kd_buf(1003, 0x7010004, data=b'launchd'.ljust(32, b'\x00'), tid=200),  # TRACE_STRING_NEWTHREAD
+        _kd_buf(1004, 0x7000008, (301, 0, 0, 0), tid=201),  # TRACE_DATA_EXEC: pid 301
+        _kd_buf(1005, 0x7010008, data=b'Preferences'.ljust(32, b'\x00'), tid=201),  # TRACE_STRING_EXEC
+        _kd_buf(1006, 0x33010005, (1, 16, 0, 0), tid=201),  # malloc start
+        _kd_buf(1007, 0x33010005, (1, 16, 0, 0), tid=200),  # malloc start
+    ]
+    parser = _traces_parser()
+    parser.filter_class = filter_class
+    processes = [parser._format_process(event.tid) for event in parser.kevents(BytesIO(V2_HEADER + b''.join(events)))
+                 if event.eventid >> 24 == 0x33]
+    assert processes == ['Preferences(301)', 'launchd(300)']
+
+
 def test_traces_filter_eventid():
     parser = _traces_parser()
     parser.filter_eventid = syscall_eventids(['open'])
