@@ -21,6 +21,15 @@ def test_syscall_eventids():
     assert 0x40c0014 in syscall_eventids(['open'])  # the default trace codes
 
 
+def test_syscall_eventids_dprotected():
+    # Opening with a data protection class is the same call, so it is matched with the plain one.
+    trace_codes = {0x40c0014: 'BSC_open', 0x40c0638: 'BSC_open_nocancel', 0x40c0360: 'BSC_open_dprotected_np',
+                   0x40c073c: 'BSC_openat', 0x40c0368: 'BSC_openat_dprotected_np'}
+    assert syscall_eventids(['open'], trace_codes) == {0x40c0014, 0x40c0638, 0x40c0360}
+    assert syscall_eventids(['openat'], trace_codes) == {0x40c073c, 0x40c0368}
+    assert syscall_eventids(['open']) >= syscall_eventids(['open_dprotected_np'])  # the default trace codes
+
+
 def test_syscall_eventids_unknown():
     with pytest.raises(ValueError, match='unknown syscalls: nosuch'):
         syscall_eventids(['open', 'nosuch'], {0x40c0014: 'BSC_open'})

@@ -33,7 +33,8 @@ def default_trace_codes() -> Mapping[int, str]:
 def syscall_eventids(names: Iterable[str], trace_codes: Optional[Mapping[int, str]] = None) -> Set[int]:
     """
     Get the event ids of BSD syscalls by name, for `PyKdebugParser.filter_eventid`.
-    A name also matches its `_nocancel` variant (e.g. `open` gives `BSC_open` and `BSC_open_nocancel`).
+    A name also matches its `_nocancel` and `_dprotected_np` variants (e.g. `open` gives `BSC_open`,
+    `BSC_open_nocancel` and `BSC_open_dprotected_np`, which opens with a data protection class).
     :param names: Syscall names, such as `open` or `openat`.
     :param trace_codes: Mapping between code and event name; the default trace codes if omitted.
     :return: The event ids.
@@ -43,7 +44,8 @@ def syscall_eventids(names: Iterable[str], trace_codes: Optional[Mapping[int, st
     eventids = set()
     unknown = []
     for name in names:
-        matches = {codes[event] for event in (f'BSC_{name}', f'BSC_{name}_nocancel') if event in codes}
+        variants = (f'BSC_{name}', f'BSC_{name}_nocancel', f'BSC_{name}_dprotected_np')
+        matches = {codes[event] for event in variants if event in codes}
         if not matches:
             unknown.append(name)
         eventids |= matches
