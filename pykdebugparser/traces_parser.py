@@ -30,10 +30,19 @@ class RawTrace:
 
 
 NO_RETURN_CALLS = ('BSC_exit', 'BSC_bsdthread_terminate')
+# Most events a live trace keeps for a call that didn't end yet. Nearly every call ends with a few dozens.
+MAX_ONGOING_EVENTS = 4096
 
 
 class TracesParser:
-    def __init__(self, trace_codes_map, threads_pids, pids_names):
+    """
+    :param live: Parse a live trace, keeping the memory of ongoing calls (the calls that didn't end yet) flat however
+        long it runs. A call that keeps `MAX_ONGOING_EVENTS` events is forgotten, it most likely won't end (such as
+        a run loop run). So is a call ongoing since before the gap before the last one when the kernel dropped
+        events: its end was most likely among them. A forgotten call isn't parsed when it ends.
+    """
+
+    def __init__(self, trace_codes_map, threads_pids, pids_names, live=False):
         self.trace_codes = trace_codes_map
         self.on_going_events = {}
         self.on_going_traces = {}
@@ -66,6 +75,18 @@ class TracesParser:
         self.handlers.update(perf_handlers)
         self.handlers.update(trace_handlers)
         self.handlers.update(turnstile_handlers)
+        self.live = live
+        # The timestamp of the last gap of dropped events.
+        self._last_gap = None
+        if live:
+            # Separate methods, so other traces pay nothing for it.
+            self.qualifiers_actions.update({
+                DgbFuncQual.DBG_FUNC_START.value: self._feed_start_event_live,
+                DgbFuncQual.DBG_FUNC_END.value: self._feed_end_event_live,
+                DgbFuncQual.DBG_FUNC_ALL.value: self._feed_single_event_live,
+                DgbFuncQual.DBG_FUNC_NONE.value: self._feed_single_event_live,
+            })
+            self.handlers['TRACE_LOST_EVENTS'] = self._handle_lost_events_live
 
     def feed(self, event):
         trace_name = self.trace_codes.get(event.eventid)
@@ -149,3 +170,50 @@ class TracesParser:
             for events in tid_state.values():
                 events.append(event)
         return self.parse_event_list([event])
+
+    def _append_live(self, tid_state, event):
+        full = False
+        for events in tid_state.values():
+            events.append(event)
+            if len(events) >= MAX_ONGOING_EVENTS:
+                full = True
+        if full:
+            for eventid in [eventid for eventid, events in tid_state.items() if len(events) >= MAX_ONGOING_EVENTS]:
+                del tid_state[eventid]
+
+    def _feed_start_event_live(self, event, state):
+        if event.eventid in self.no_return_eventids:
+            return self._feed_single_event_live(event, state)
+        tid_state = state.get(event.tid)
+        if tid_state is None:
+            tid_state = state[event.tid] = {}
+        tid_state[event.eventid] = []
+        self._append_live(tid_state, event)
+
+    def _feed_end_event_live(self, event, state):
+        tid_state = state.get(event.tid)
+        if tid_state is None or event.eventid not in tid_state:
+            return
+        events = tid_state.pop(event.eventid)
+        events.append(event)
+        self._append_live(tid_state, event)
+        return self.parse_event_list(events)
+
+    def _feed_single_event_live(self, event, state):
+        tid_state = state.get(event.tid)
+        if tid_state:
+            self._append_live(tid_state, event)
+        return self.parse_event_list([event])
+
+    def _handle_lost_events_live(self, parser, events):
+        previous_gap, self._last_gap = self._last_gap, events[0].timestamp
+        if previous_gap is not None:
+            for state in (self.on_going_events, self.on_going_traces):
+                for tid in list(state):
+                    tid_state = state[tid]
+                    for eventid in [eventid for eventid, events in tid_state.items()
+                                    if events[0].timestamp < previous_gap]:
+                        del tid_state[eventid]
+                    if not tid_state:
+                        del state[tid]
+        return trace_handlers['TRACE_LOST_EVENTS'](parser, events)

@@ -58,6 +58,8 @@ class PyKdebugParser:
         # Event ids (debugids without the function qualifier) to include, on top of the class/subclass filters.
         # Those without a handler are shown by name and raw values.
         self.filter_eventid = set()
+        # Whether the trace is live, which keeps the memory of a long trace flat (see `TracesParser`).
+        self.live = False
         self.show_timestamp = True
         self.show_name = True
         self.show_func_qual = True
@@ -141,7 +143,7 @@ class PyKdebugParser:
         if add_fs_class:
             self.filter_class.append(DBG_FSYSTEM)
 
-        traces_parser = TracesParser(trace_codes_map, self.threads_pids, self.pids_names)
+        traces_parser = TracesParser(trace_codes_map, self.threads_pids, self.pids_names, self.live)
         traces_parser.raw_eventids = set(self.filter_eventid)
         trace_generator = traces_parser.feed_generator(self.kevents(kdebug))
 

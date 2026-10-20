@@ -9,6 +9,7 @@ from pykdebugparser.kd_buf_parser import RAW_VERSION2_BYTES, V2_EVENTS_ALIGNMENT
 from pykdebugparser.kevent import Kevent
 from pykdebugparser.pykdebugparser import PyKdebugParser
 from pykdebugparser.trace_codes import default_trace_codes, syscall_eventids
+from pykdebugparser import traces_parser
 from pykdebugparser.traces_parser import TracesParser
 
 # A trace version 2 header without threads, padded to where its events start.
@@ -204,6 +205,41 @@ def test_traces_keep_lost_events_when_filtered():
     traces = list(parser.formatted_traces(BytesIO(events_buf)))
     assert len(traces) == 1
     assert traces[0].endswith('TRACE_LOST_EVENTS: the kernel dropped trace events here')
+
+
+@pytest.mark.parametrize('live, max_ongoing_events, parsed', [(False, 12, True), (True, 13, True), (True, 12, False)])
+def test_traces_live_forget_calls_that_keep_too_many_events(monkeypatch, live, max_ongoing_events, parsed):
+    monkeypatch.setattr(traces_parser, 'MAX_ONGOING_EVENTS', max_ongoing_events)
+    lookup = struct.pack('<Q', 0x1234) + b'/usr/libexec/xpcproxy'.ljust(24, b'\x00')
+    events = [
+        _kd_buf(1000, 0x40c0014 | 1, (0x16b000000, 0, 0, 0)),  # open(path, O_RDONLY) start
+        _kd_buf(1001, 0x3010090 | 3, data=lookup),  # VFS_LOOKUP (start and end)
+    ]
+    events += [_kd_buf(1002, 0x1400140, (0, 3, 0, 0))] * 10  # MACH_PSET_AVG_EXEC_TIME
+    events.append(_kd_buf(1003, 0x40c0014 | 2, (0, 3, 0, 0)))  # open end: fd 3
+    parser = _traces_parser()
+    parser.live = live
+    traces = [t for t in parser.traces(BytesIO(V2_HEADER + b''.join(events))) if t.ktraces[0].timestamp == 1000]
+    # A live call that kept as many events as it may (12 before its end) is forgotten.
+    assert [str(t) for t in traces] == (['open("/usr/libexec/xpcproxy", O_RDONLY), fd: 3'] if parsed else [])
+
+
+@pytest.mark.parametrize('live', [False, True])
+def test_traces_live_forget_calls_ongoing_across_gaps(live):
+    events = [
+        _kd_buf(1000, 0x40c000c | 1, (3, 0x16b000000, 10, 0), tid=100),  # read start
+        _kd_buf(1001, 0x7020008, (1, 0, 0, 0), tid=300),  # TRACE_LOST_EVENTS
+        _kd_buf(1002, 0x40c000c | 1, (4, 0x16b000000, 10, 0), tid=200),  # read start
+        _kd_buf(1003, 0x7020008, (1, 0, 0, 0), tid=300),  # TRACE_LOST_EVENTS
+        _kd_buf(1004, 0x40c000c | 2, (0, 10, 0, 0), tid=100),  # read end
+        _kd_buf(1005, 0x40c000c | 2, (0, 10, 0, 0), tid=200),  # read end
+    ]
+    parser = _traces_parser()
+    parser.live = live
+    traces = [str(t) for t in parser.traces(BytesIO(V2_HEADER + b''.join(events)))]
+    # A live call ongoing since before the previous gap most likely lost its end.
+    assert traces == ['TRACE_LOST_EVENTS: the kernel dropped trace events here'] * 2 + \
+        ['read(3, 0x16b000000, 10), count: 10'] * (not live) + ['read(4, 0x16b000000, 10), count: 10']
 
 
 def test_traces_forget_the_calls_of_terminated_threads():
