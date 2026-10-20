@@ -1,4 +1,5 @@
-from pykdebugparser.trace_codes import default_trace_codes, from_trace_codes_text, syscall_eventids
+from pykdebugparser.trace_codes import SYSCALL_GROUPS, default_trace_codes, event_eventids, from_trace_codes_text, \
+    group_mach_traps, syscall_eventids, syscall_names
 
 import pytest
 
@@ -43,3 +44,25 @@ def test_syscall_eventids_unknown():
 ])
 def test_default_trace_codes_name_userspace_events(eventid, name):
     assert default_trace_codes()[eventid] == name
+
+
+def test_syscall_names():
+    trace_codes = {0x40c0014: 'BSC_open', 0x40c0638: 'BSC_open_nocancel', 0x40c0360: 'BSC_#216',
+                   0x40c0640: 'BSC_read_nocancel', 0x1300004: 'MACH_vmfault'}
+    # A `_nocancel` variant is left out, unless it is the only one.
+    assert syscall_names(trace_codes) == ['open', 'read_nocancel']
+
+
+def test_event_eventids():
+    trace_codes = {0x1f070000: 'DBG_DYLD_A', 0x1f070004: 'DBG_DYLD_A', 0x1f070008: 'DBG_DYLD_B'}
+    assert event_eventids(['DBG_DYLD_A'], trace_codes) == {0x1f070000, 0x1f070004}
+    with pytest.raises(ValueError, match='unknown events: nosuch'):
+        event_eventids(['DBG_DYLD_B', 'nosuch'], trace_codes)
+
+
+def test_syscall_groups_are_known():
+    # Every name of a group is a known syscall or Mach trap.
+    syscall_eventids(name for names in SYSCALL_GROUPS.values() for name in names)
+    event_eventids(name for group in SYSCALL_GROUPS for name in group_mach_traps(group))
+    assert 'MSC_mach_vm_map_trap' in group_mach_traps('mach')
+    assert group_mach_traps('fs') == ()
