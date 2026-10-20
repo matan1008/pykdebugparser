@@ -1,5 +1,5 @@
 import functools
-from typing import Iterable, List, Mapping, Optional, Set, Tuple
+from typing import FrozenSet, Iterable, List, Mapping, Optional, Set, Tuple
 from pathlib import Path
 
 
@@ -108,6 +108,8 @@ SYSCALL_GROUPS: Mapping[str, Tuple[str, ...]] = {
         'getattrlist',
         'getattrlistat',
         'getxattr',
+        'guarded_open_dprotected_np',
+        'guarded_open_np',
         'lchown',
         'link',
         'linkat',
@@ -359,14 +361,22 @@ MACH_TRAP_GROUPS: Mapping[str, Tuple[str, ...]] = {
 
 
 @functools.lru_cache(maxsize=None)
-def _parsed_mach_traps() -> Tuple[str, ...]:
-    """The trace code names of the Mach traps pykdebugparser parses."""
+def parsed_events() -> FrozenSet[str]:
+    """
+    Get the trace code names of the events pykdebugparser parses (the others are only printed when selected by id).
+    :return: The names.
+    """
     # Imported here, the trace handlers import this module.
     from pykdebugparser.traces_parser import TracesParser
 
-    codes = default_trace_codes()
-    handlers = TracesParser(codes, {}, {}).handlers
-    return tuple(sorted({name for name in codes.values() if name.startswith('MSC_') and name in handlers}))
+    return frozenset(TracesParser(default_trace_codes(), {}, {}).handlers)
+
+
+@functools.lru_cache(maxsize=None)
+def _parsed_mach_traps() -> Tuple[str, ...]:
+    """The trace code names of the Mach traps pykdebugparser parses."""
+    parsed = parsed_events()
+    return tuple(sorted({name for name in default_trace_codes().values() if name.startswith('MSC_') and name in parsed}))
 
 
 def group_mach_traps(group: str) -> Tuple[str, ...]:
@@ -376,3 +386,18 @@ def group_mach_traps(group: str) -> Tuple[str, ...]:
     :return: The trace code names of its Mach traps, for `event_eventids`.
     """
     return _parsed_mach_traps() if group == 'mach' else MACH_TRAP_GROUPS.get(group, ())
+
+
+# The user space event groups of `parse-live` (`--xpc`, ...), by the prefix of their trace code names. Their events have
+# no decoder, so they print as their name and raw arguments.
+EVENT_GROUP_PREFIXES: Mapping[str, str] = {'xpc': 'XPC_', 'dispatch': 'DISPATCH_', 'runloop': 'CFRL_'}
+
+
+def group_events(group: str) -> Tuple[str, ...]:
+    """
+    Get the events of a user space event group (see `EVENT_GROUP_PREFIXES`).
+    :param group: Group name, such as `xpc`.
+    :return: The sorted trace code names of its events, for `event_eventids`.
+    """
+    prefix = EVENT_GROUP_PREFIXES[group]
+    return tuple(sorted({name for name in default_trace_codes().values() if name.startswith(prefix)}))
