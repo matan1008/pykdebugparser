@@ -1,6 +1,7 @@
 import errno
 import io
 import json
+import re
 import signal
 import sys
 from itertools import islice
@@ -9,6 +10,7 @@ import click
 
 from pykdebugparser.host_trace import DEFAULT_BUFFER_EVENTS, HostTrace, TraceLagError
 from pykdebugparser.kd_buf_parser import KdBufParser
+from pykdebugparser.line_filter import MATCH_HELP, LineFilter, emphasize
 from pykdebugparser.pykdebugparser import PyKdebugParser
 from pykdebugparser.selection import BSC_SUBCLASS, GROUP_HELP, Selection, captured_events, parse_live_selection
 from pykdebugparser.trace_codes import EVENT_GROUP_PREFIXES, SYSCALL_GROUPS, default_trace_codes, event_eventids, \
@@ -191,6 +193,15 @@ def _validate_events(ctx, param, names):
     return names
 
 
+def _validate_regexes(ctx, param, regexes):
+    for regex in regexes:
+        try:
+            re.compile(regex)
+        except re.error as e:
+            raise click.BadParameter(f'{regex!r}: {e}')
+    return regexes
+
+
 def _raise_system_exit(signum, frame):
     raise SystemExit(128 + signum)
 
@@ -278,9 +289,16 @@ def _selection(bsc, class_filters, subclass_filters, syscalls, events, dyld, gro
 @process_filter
 @show_tid
 @_selection_options
+@click.option('-m', '--match', multiple=True, help=MATCH_HELP['match'])
+@click.option('-v', '--invert-match', multiple=True, help=MATCH_HELP['invert_match'])
+@click.option('-mi', '--match-insensitive', multiple=True, help=MATCH_HELP['match_insensitive'])
+@click.option('-vi', '--invert-match-insensitive', multiple=True, help=MATCH_HELP['invert_match_insensitive'])
+@click.option('-r', '--regex', multiple=True, callback=_validate_regexes, help=MATCH_HELP['regex'])
+@click.option('-ri', '--insensitive-regex', multiple=True, callback=_validate_regexes,
+              help=MATCH_HELP['insensitive_regex'])
 @click.option('--json', 'json_output', is_flag=True,
               help='Print each trace as a JSON object, one per line: its time, thread, process, event name, parsed '
-                   'fields and text.')
+                   'fields and text. The filters match the line it would print.')
 @click.option('--color/--no-color', default=True, help='Whether to print with color or not.')
 @click.option('--color-mode', type=click.Choice(['rich', 'fast'], case_sensitive=False), default='rich',
               show_default=True,
@@ -294,8 +312,9 @@ def _selection(bsc, class_filters, subclass_filters, syscalls, events, dyld, gro
                    'fails (--no-skip-behind).')
 @click.option('-b', '--buffer-events', type=click.INT, default=DEFAULT_BUFFER_EVENTS, show_default=True,
               help='Kernel trace buffer size, in events.')
-def parse_live(count, tid, process, show_tid, bsc, class_filters, subclass_filters, syscalls, events, dyld,
-               json_output, color, color_mode, skip_behind, max_lag, buffer_events, **groups):
+def parse_live(count, tid, process, show_tid, bsc, class_filters, subclass_filters, syscalls, events, dyld, match,
+               invert_match, match_insensitive, invert_match_insensitive, regex, insensitive_regex, json_output, color,
+               color_mode, skip_behind, max_lag, buffer_events, **groups):
     """
     Print traces (syscalls, thread events, etc.) of this Mac in real time (requires root).
 
@@ -311,6 +330,7 @@ def parse_live(count, tid, process, show_tid, bsc, class_filters, subclass_filte
     kernel_subclasses += sorted({eventid >> 16 for eventid in selection.event_ids})
     if DBG_BSD in class_filters or any(sc >> 8 == DBG_BSD for sc in kernel_subclasses):
         kernel_subclasses.append(DBG_FSRW)
+    line_filter = LineFilter(match, invert_match, match_insensitive, invert_match_insensitive, regex, insensitive_regex)
     colored_columns = color and color_mode.lower() == 'fast'
     # Lines are written in batches, and flushed whenever the trace waits for events: a write per line (what a
     # line-buffered terminal does) costs a busy trace up to half its speed.
@@ -336,6 +356,7 @@ def parse_live(count, tid, process, show_tid, bsc, class_filters, subclass_filte
             parser.filter_class = class_filters
             parser.filter_subclass = subclass_filters
             parser.filter_eventid = selection.eventids
+            parser.line_filter = line_filter
             parser.show_tid = show_tid
             parser.color = color and not colored_columns
             write = out.write
@@ -350,7 +371,10 @@ def parse_live(count, tid, process, show_tid, bsc, class_filters, subclass_filte
                         write('{:^27}|{:^33}|   Event\n'.format('Time', 'Process'))
                     for line in islice(parser.formatted_traces(trace), None if count < 0 else count):
                         if colored_columns:
+                            plain = line
                             line = _colorize_columns(line, show_tid)
+                            if line_filter:
+                                line = emphasize(line, line_filter.spans(plain))
                         write(line + '\n')
             except KeyboardInterrupt:
                 pass

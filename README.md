@@ -226,8 +226,15 @@ sudo pykdebugparser parse-live --fs --process ls
 ```
 
 `events` with the same options lists the events that are printed (`events --fs`, `events -s open`), and `events TEXT`
-finds an event's name. Whenever the output falls more than `--max-lag` (2s by default) behind, `parse-live` fails, or
-skips ahead to recent events with `--skip-behind`. When it stops, it tells whether it kept up:
+finds an event's name. Like pymobiledevice3's `syslog live`, `-m`/`-mi` (all must match), `-v`/`-vi` (none may match)
+and `-r`/`-ri` (any regex) filter the printed lines (time, process and event), and highlight what matched:
+
+```shell
+sudo pykdebugparser parse-live --fs -mi sqlite -v .db-journal
+```
+
+Whenever the output falls more than `--max-lag` (2s by default) behind, `parse-live` fails, or skips ahead to recent
+events with `--skip-behind`. When it stops, it tells whether it kept up:
 
 ```
 Read 2428814 events, the kernel dropped events 0 times, 0 events were skipped to catch up
