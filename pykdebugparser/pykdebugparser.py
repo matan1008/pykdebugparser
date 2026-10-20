@@ -14,6 +14,7 @@ from pykdebugparser.kevent import DgbFuncQual
 from pykdebugparser.line_filter import emphasize
 from pykdebugparser.trace_codes import default_trace_codes
 from pykdebugparser.trace_handlers import UnknownEnumValue
+from pykdebugparser.trace_handlers.fsystem import DBG_DKRW
 from pykdebugparser.trace_handlers.trace import TRACE_DATA_EXEC, TRACE_DATA_NEWTHREAD, TRACE_DATA_THREAD_TERMINATE_PID, \
     TRACE_LOST_EVENTS, TRACE_STRING_EXEC, TRACE_STRING_NEWTHREAD
 from pykdebugparser.traces_parser import TracesParser
@@ -23,6 +24,10 @@ from pykdebugparser.os_log_event import OsLogEvent
 DBG_TRACE = 7
 DBG_FSYSTEM = 3
 DBG_BSD = 4
+DBG_PERF = 0x25
+# BSC_execve, BSC_mac_execve and BSC_posix_spawn (with POSIX_SPAWN_SETEXEC): the process of the calling thread changes
+# during the call.
+EXEC_EVENTIDS = {0x40c00ec, 0x40c05f0, 0x40c03d0}
 
 
 def _fields(trace) -> dict:
@@ -95,27 +100,40 @@ class PyKdebugParser:
     def kevents(self, kdebug: io.IOBase):
         return self._kevents(kdebug)
 
-    def _kevents(self, kdebug: io.IOBase, ongoing_calls=None):
+    def _kevents(self, kdebug: io.IOBase, ongoing_calls=None, process=None):
         events_generator = KdBufParser(self.threads_pids, self.pids_names).parse(kdebug)
         return self._filter_kevents(events_generator, self.filter_tid is not None,
                                     bool(self.filter_class or self.filter_subclass or self.filter_eventid),
-                                    ongoing_calls)
+                                    ongoing_calls, process)
 
-    def _filter_kevents(self, events_generator, by_tid, by_class, ongoing_calls=None):
+    def _filter_kevents(self, events_generator, by_tid, by_class, ongoing_calls=None, process=None):
         """
         :param ongoing_calls: The ongoing calls of each thread (`TracesParser.on_going_events`), to drop the kevents of
             DBG_FSYSTEM that no call takes (when that class is only traced for the paths of BSD syscalls).
+        :param process: A process (name or pid) whose traces are the only ones kept, to drop the kevents of the threads
+            known to be of other processes before they are parsed into traces. The traces still need filtering by
+            their process, since the process of a thread may be learned only after its first kevents.
         """
         # A single generator instead of a `filter` chain, avoiding a lambda call per kevent per filter.
         filter_class = self.filter_class
         filter_subclass = self.filter_subclass
         filter_eventid = set(self.filter_eventid)
+        threads_pids = self.threads_pids
+        pids_names = self.pids_names
+        process_pid = int(process) if process is not None and process.isdigit() else None
         for event in events_generator:
             if isinstance(event, OsLogEvent):
                 continue
             eventid = event.eventid
             if eventid >> 24 == DBG_TRACE:
                 self._track_process(event)
+            elif process is not None:
+                # Kept whatever their thread: a kperf sample may learn the process of its thread, and a disk I/O
+                # completes on another thread than the one that issued it (to which its trace belongs).
+                if not (eventid >> 24 == DBG_PERF or eventid >> 16 == DBG_DKRW or eventid in EXEC_EVENTIDS):
+                    pid = threads_pids.get(event.tid)
+                    if pid is not None and pid != process_pid and pids_names.get(pid) != process:
+                        continue
             if by_tid and event.tid != self.filter_tid:
                 continue
             if by_class:
@@ -168,7 +186,7 @@ class PyKdebugParser:
         traces_parser = TracesParser(trace_codes_map, self.threads_pids, self.pids_names, self.live)
         traces_parser.raw_eventids = set(self.filter_eventid)
         trace_generator = traces_parser.feed_generator(
-            self._kevents(kdebug, traces_parser.on_going_events if add_fs_class else None))
+            self._kevents(kdebug, traces_parser.on_going_events if add_fs_class else None, self.filter_process))
 
         if self.filter_process is not None:
             trace_generator = filter(self._filter_process_callback, trace_generator)
