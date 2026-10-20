@@ -392,3 +392,43 @@ def test_cli_parse_live_max_lag_must_be_positive(parse_live_fake):
     result = CliRunner().invoke(main.cli, ['parse-live', '--max-lag', '0'])
     assert result.exit_code == 2
     assert parse_live_fake.calls == []
+
+
+@pytest.mark.parametrize('args, kept', [
+    (['-m', 'xpcproxy'], ['open']),
+    (['-m', 'xpcproxy', '-m', 'O_WRONLY'], []),
+    (['-mi', 'XPCPROXY'], ['open']),
+    (['-v', 'xpcproxy'], ['read']),
+    (['-vi', 'PROBE'], []),
+    (['-r', r'read\(3', '-r', 'nope'], ['read']),
+    (['-ri', 'OPEN.*FD: 3'], ['open']),
+])
+def test_cli_parse_live_match(parse_live_fake, args, kept):
+    result = CliRunner().invoke(main.cli, ['parse-live', '--bsc', '--no-color', *args])
+    assert result.exit_code == 0, result.output
+    traces = [line.split()[-1] for line in result.output.splitlines()[1:] if not line.startswith('Read ')]
+    printed = [name for name in ('open', 'read') if any(name + '(' in line for line in result.output.splitlines())]
+    assert printed == kept, traces
+
+
+def test_cli_parse_live_match_highlights(parse_live_fake):
+    result = CliRunner().invoke(main.cli, ['parse-live', '--bsc', '-m', 'xpcproxy'])
+    assert result.exit_code == 0, result.output
+    assert '\x1b[1;4mxpcproxy\x1b[0m' in result.output
+    # The fast color mode highlights too.
+    parse_live_fake.chunks = [_cli_events()]
+    result = CliRunner().invoke(main.cli, ['parse-live', '--bsc', '-m', 'xpcproxy', '--color-mode', 'fast'])
+    assert '\x1b[1;4mxpcproxy\x1b[0m' in result.output
+
+
+def test_cli_parse_live_match_json(parse_live_fake):
+    result = CliRunner().invoke(main.cli, ['parse-live', '--bsc', '--json', '-m', 'probe(42)', '-m', 'read'])
+    assert result.exit_code == 0, result.output
+    traces = [json.loads(line) for line in result.output.splitlines() if line.startswith('{')]
+    assert [trace['event'] for trace in traces] == ['BSC_read']
+
+
+def test_cli_parse_live_bad_regex(parse_live_fake):
+    result = CliRunner().invoke(main.cli, ['parse-live', '-r', '('])
+    assert result.exit_code == 2
+    assert parse_live_fake.calls == []
