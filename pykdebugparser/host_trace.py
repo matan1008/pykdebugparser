@@ -55,6 +55,18 @@ _DEBUGID_OFFSET = 48
 SysctlFunc = Callable[[list, Optional[bytearray]], int]
 
 
+class TraceLagError(Exception):
+    """Raised when a live trace falls further behind the system than it may."""
+
+    def __init__(self, lag: float, max_lag: float):
+        super().__init__(lag, max_lag)
+        self.lag = lag
+        self.max_lag = max_lag
+
+    def __str__(self):
+        return f'Fell {self.lag:.2f}s behind, more than the max lag ({self.max_lag:g}s)'
+
+
 def typefilter(classes: Iterable[int] = (), subclasses: Iterable[int] = ()) -> bytes:
     """
     Build a kernel typefilter: a bitmap with a bit per class/subclass (`debugid >> 16`) to trace.
@@ -124,6 +136,12 @@ class HostTrace:
     :param subclasses: Subclasses to trace (`class << 8 | subclass`), filtered by the kernel.
     :param buffer_events: Kernel buffer size, in events.
     :param exclude_pid: Process not to trace (by default the tracing process itself), `None` for none.
+    :param max_lag: Skip the events of a read whose newest event is more than this many seconds old, so a reader slower
+        than the system catches up instead of falling ever further behind. `None` never checks.
+    :param skip_behind: Whether to skip the events that are more than `max_lag` old, or raise `TraceLagError`.
+    :param on_skip: Called with the number of skipped events and how far behind the trace was, once per catch-up.
+    :param on_wait: Called before waiting for events (everything traced so far was read), e.g. to flush buffered
+        output.
     :param sysctl: Replaces the kdebug sysctl calls, for tests. Called with the MIB and a buffer.
     :param clock: Replaces the timebase and time information, a `(numer, denom, mach_absolute_time,
         usecs_since_epoch)` callable, for tests.
@@ -132,12 +150,18 @@ class HostTrace:
     def __init__(self, classes: Iterable[int] = (), subclasses: Iterable[int] = (),
                  buffer_events: int = DEFAULT_BUFFER_EVENTS, exclude_pid: Optional[int] = -1,
                  sysctl: Optional[SysctlFunc] = None, clock: Optional[Callable[[], tuple]] = None,
-                 poll_interval: float = POLL_INTERVAL):
+                 poll_interval: float = POLL_INTERVAL, max_lag: Optional[float] = None,
+                 on_skip: Optional[Callable[[int, float], None]] = None, on_wait: Optional[Callable[[], None]] = None,
+                 skip_behind: bool = True):
         self.classes = list(classes)
         self.subclasses = list(subclasses)
         self.buffer_events = buffer_events
         self.exclude_pid = os.getpid() if exclude_pid == -1 else exclude_pid
         self.poll_interval = poll_interval
+        self.max_lag = max_lag
+        self.on_skip = on_skip
+        self.on_wait = on_wait
+        self.skip_behind = skip_behind
         self._darwin = None
         self._sysctl = sysctl
         self._clock = clock
@@ -153,6 +177,10 @@ class HostTrace:
         self.events = 0
         # Gaps the kernel reported (a TRACE_LOST_EVENTS record each): the buffer wrapped before it was read.
         self.lost_events = 0
+        # Records skipped to catch up (see `max_lag`).
+        self.skipped_events = 0
+        self._skipping = 0  # events skipped in the current catch-up
+        self._skipping_lag = 0.0
 
     def _kdebug(self, op: int, value: Optional[int] = None, buffer: Optional[bytearray] = None) -> int:
         mib = [CTL_KERN, KERN_KDEBUG, op] + ([] if value is None else [value])
@@ -246,23 +274,58 @@ class HostTrace:
         # The events start at a 4 KiB boundary.
         return header + bytes(-len(header) % 0x1000)
 
+    def _now(self) -> int:
+        """The current mach absolute time, the clock of event timestamps."""
+        if self._clock is not None:
+            return self._clock()[2]
+        return self._darwin.mach_absolute_time()
+
     def _read_events(self) -> bytes:
-        """Read the events traced so far, waiting until there is at least one."""
+        """Read the events traced so far, waiting until there is at least one (that isn't skipped)."""
+        buffer = self._read_buffer
         while True:
             if not self._started:
                 return b''
-            count = self._kdebug(KERN_KDREADTR, buffer=self._read_buffer)
-            if count:
+            count = self._kdebug(KERN_KDREADTR, buffer=buffer)
+            if not count:
+                if self.on_wait is not None:
+                    self.on_wait()
+                time.sleep(self.poll_interval)
+                continue
+            size = count * KD_BUF_SIZE
+            self.events += count
+            index = buffer.find(_LOST_EVENTS_DEBUGID, 0, size)
+            while index != -1:
+                if index % KD_BUF_SIZE == _DEBUGID_OFFSET:
+                    self.lost_events += 1
+                index = buffer.find(_LOST_EVENTS_DEBUGID, index + 1, size)
+            if not self._is_behind(count):
                 break
-            time.sleep(self.poll_interval)
-        data = bytes(memoryview(self._read_buffer)[:count * KD_BUF_SIZE])
-        self.events += count
-        index = data.find(_LOST_EVENTS_DEBUGID)
-        while index != -1:
-            if index % KD_BUF_SIZE == _DEBUGID_OFFSET:
-                self.lost_events += 1
-            index = data.find(_LOST_EVENTS_DEBUGID, index + 1)
-        return data
+        self._report_skip()
+        return bytes(memoryview(buffer)[:size])
+
+    def _is_behind(self, count: int) -> bool:
+        """Whether the newest of the read events is more than `max_lag` old, counting them as skipped if so."""
+        if self.max_lag is None:
+            return False
+        newest = struct.unpack_from('<Q', self._read_buffer, (count - 1) * KD_BUF_SIZE)[0]
+        lag = (self._now() - newest) * self.numer / self.denom / 1e9
+        if lag <= self.max_lag:
+            return False
+        if not self.skip_behind:
+            raise TraceLagError(lag, self.max_lag)
+        self._skipping += count
+        self._skipping_lag = max(self._skipping_lag, lag)
+        return True
+
+    def _report_skip(self):
+        if not self._skipping:
+            return
+        self.skipped_events += self._skipping
+        if self.on_skip is not None:
+            self.on_skip(self._skipping, self._skipping_lag)
+        self._skipping = 0
+        self._skipping_lag = 0.0
 
     def read1(self, size: int = -1) -> bytes:
         """Read up to `size` bytes, waiting only if nothing was read yet."""

@@ -1,4 +1,5 @@
 import errno
+import json
 import struct
 from datetime import timezone
 
@@ -218,3 +219,159 @@ def test_cli_live_requires_root(cli_fake):
     result = CliRunner().invoke(main.cli, ['live'])
     assert result.exit_code == 1
     assert 'requires root' in result.output
+
+
+def test_skip_behind():
+    events = _open_events()
+    old = [_kd_buf(1, 0x40c0014 | 1, (0x16b000000, 0, 0, 0)), _kd_buf(2, 0x40c0014 | 2, (0, 4, 0, 0))]
+    skips = []
+    fake = FakeKdebug([old, events])
+    # A tick is a second: the old events are 3s old, the recent ones are 1s old.
+    trace = HostTrace(sysctl=fake, clock=lambda: (1000000000, 1, 1003, 0), poll_interval=0, exclude_pid=None,
+                      max_lag=2, on_skip=lambda skipped, lag: skips.append((skipped, lag)))
+    fake.trace = trace
+    with trace:
+        traces = list(_parser(trace).formatted_traces(trace))
+    assert [trace.split()[-1] for trace in traces] == ['4660', '3']
+    assert skips == [(2, 1001.0)]
+    assert (trace.events, trace.skipped_events) == (5, 2)
+
+
+def test_no_skip_without_max_lag():
+    fake = FakeKdebug([_open_events()])
+    trace = HostTrace(sysctl=fake, clock=lambda: (1000000000, 1, 10 ** 9, 0), poll_interval=0, exclude_pid=None)
+    fake.trace = trace
+    with trace:
+        assert len(list(_parser(trace).formatted_traces(trace))) == 2
+    assert trace.skipped_events == 0
+
+
+def test_on_wait():
+    waits = []
+    # An empty chunk is a read that found no events.
+    fake = FakeKdebug([[], _open_events()])
+    trace = HostTrace(sysctl=fake, clock=lambda: (1, 1, 0, 0), poll_interval=0, exclude_pid=None,
+                      on_wait=lambda: waits.append(trace.events))
+    fake.trace = trace
+    with trace:
+        assert len(list(_parser(trace).formatted_traces(trace))) == 2
+    # Before the events, and once they were all read (when the fake stops the trace).
+    assert waits == [0, 3]
+
+
+def _cli_events():
+    # A read the --syscall filter drops.
+    read = [_kd_buf(1003, 0x40c000c | 1, (3, 0x1000, 100, 0)), _kd_buf(1004, 0x40c000c | 2, (0, 100, 0, 0))]
+    return [*_open_events(), *read]
+
+
+@pytest.fixture
+def parse_live_fake(cli_fake):
+    cli_fake.chunks = [_cli_events()]
+    return cli_fake
+
+
+def test_cli_parse_live_bsc(parse_live_fake):
+    result = CliRunner().invoke(main.cli, ['parse-live', '--bsc', '--no-color'])
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    assert lines[0].split('|')[-1].strip() == 'Event'
+    assert lines[1].endswith('open("/usr/libexec/xpcproxy", O_RDONLY), fd: 3')
+    assert lines[2].endswith('read(3, 0x1000, 100), count: 100')
+    assert 'Read 5 events, the kernel dropped events 0 times, 0 events were skipped to catch up' in lines
+    assert parse_live_fake.buffers['typefilter'] == typefilter([], [0x40c, 0x301])
+    assert parse_live_fake.calls[-2:] == [('enable', 0), ('remove',)]
+
+
+@pytest.mark.parametrize('args', [['-s', 'open'], ['--fs']])
+def test_cli_parse_live_syscalls(parse_live_fake, args):
+    result = CliRunner().invoke(main.cli, ['parse-live', '--no-color', *args])
+    assert result.exit_code == 0, result.output
+    traces = [line for line in result.output.splitlines()[1:] if not line.startswith('Read ')]
+    assert len(traces) == 1
+    assert traces[0].endswith('open("/usr/libexec/xpcproxy", O_RDONLY), fd: 3')
+    # The kernel can only filter the whole subclass.
+    assert parse_live_fake.buffers['typefilter'] == typefilter([], [0x40c, 0x301])
+
+
+def test_cli_parse_live_events(parse_live_fake):
+    result = CliRunner().invoke(main.cli, ['parse-live', '-e', 'MSC_mach_vm_map_trap', '--dyld'])
+    assert result.exit_code == 0, result.output
+    assert parse_live_fake.buffers['typefilter'] == typefilter([0x1f], [0x10c])
+
+
+def test_cli_parse_live_json(parse_live_fake):
+    result = CliRunner().invoke(main.cli, ['parse-live', '-s', 'open', '--json'])
+    assert result.exit_code == 0, result.output
+    # The output may hold the stats of stderr too, depending on the click version.
+    traces = [json.loads(line) for line in result.output.splitlines() if line.startswith('{')]
+    assert [(trace['event'], trace['process'], trace['fields']['result']) for trace in traces] == \
+        [('BSC_open', 'probe', 'fd: 3')]
+
+
+def test_cli_parse_live_fast_colors(parse_live_fake):
+    result = CliRunner().invoke(main.cli, ['parse-live', '-s', 'open', '--color-mode', 'fast'])
+    assert result.exit_code == 0, result.output
+    assert result.output.splitlines()[1].endswith('\033[32mopen("/usr/libexec/xpcproxy", O_RDONLY), fd: 3\033[0m')
+
+
+def test_cli_parse_live_unknown_syscall(parse_live_fake):
+    result = CliRunner().invoke(main.cli, ['parse-live', '-s', 'nosuch'])
+    assert result.exit_code == 2
+    assert 'unknown syscalls: nosuch' in result.output
+    assert parse_live_fake.calls == []
+
+
+def test_cli_parse_live_requires_root(parse_live_fake):
+    parse_live_fake.fail['remove'] = errno.EPERM
+    result = CliRunner().invoke(main.cli, ['parse-live', '--bsc'])
+    assert result.exit_code == 1
+    assert 'requires root' in result.output
+
+
+def test_cli_syscalls():
+    result = CliRunner().invoke(main.cli, ['syscalls'])
+    assert {'open', 'openat', 'read'} <= set(result.output.split())
+    assert 'open_nocancel' not in result.output.split()
+    result = CliRunner().invoke(main.cli, ['syscalls', '--group', 'mem'])
+    assert {'mmap', 'MSC_mach_vm_map_trap'} <= set(result.output.split())
+
+
+def test_cli_events():
+    assert 'DBG_DYLD_TIMING_DLOPEN' in CliRunner().invoke(main.cli, ['events']).output.split()
+
+
+def test_raise_when_behind_without_skip_behind():
+    old = [_kd_buf(1, 0x40c0014 | 1, (0x16b000000, 0, 0, 0))]
+    fake = FakeKdebug([_open_events(), old])
+    # A tick is a second: the open events are 1s old, the last one 1002s old.
+    trace = HostTrace(sysctl=fake, clock=lambda: (1000000000, 1, 1003, 0), poll_interval=0, exclude_pid=None,
+                      max_lag=2, skip_behind=False)
+    fake.trace = trace
+    with pytest.raises(host_trace.TraceLagError) as e:
+        with trace:
+            list(_parser(trace).formatted_traces(trace))
+    assert (e.value.lag, e.value.max_lag) == (1002, 2)
+    assert str(e.value) == 'Fell 1002.00s behind, more than the max lag (2s)'
+    assert fake.calls[-2:] == [('enable', 0), ('remove',)]
+
+
+def test_cli_parse_live_lag_error(parse_live_fake, monkeypatch):
+    def host_trace_(*args, **kwargs):
+        trace = _trace(parse_live_fake, *args, **kwargs)
+        trace._clock = lambda: (1000000000, 1, 10 ** 6, 0)
+        return trace
+
+    monkeypatch.setattr(main, 'HostTrace', host_trace_)
+    result = CliRunner().invoke(main.cli, ['parse-live', '--bsc', '--no-skip-behind', '--max-lag', '0.5'])
+    assert result.exit_code == 1
+    lines = result.output.splitlines()
+    assert 'Read 5 events, the kernel dropped events 0 times, 0 events were skipped to catch up' in lines
+    assert lines[-1].startswith('Error: Fell ')
+    assert lines[-1].endswith('more than the max lag (0.5s): narrow the trace, raise --max-lag, or use --skip-behind')
+
+
+def test_cli_parse_live_max_lag_must_be_positive(parse_live_fake):
+    result = CliRunner().invoke(main.cli, ['parse-live', '--max-lag', '0'])
+    assert result.exit_code == 2
+    assert parse_live_fake.calls == []

@@ -216,6 +216,23 @@ Class (`-cf`) and subclass (`-sf`) filters are applied by the kernel, so narrowi
 busy system. When it falls behind, the kernel drops events, and a `TRACE_LOST_EVENTS` trace marks the gap. Tracing
 stops (and the kernel trace facility is released) on Ctrl-C, SIGTERM or `-c` traces.
 
+`parse-live` traces this Mac live too, with filters by syscall (`-s open -s openat`), by event (`-e`), and by group
+(`--fs`, `--net`, `--proc`, `--io`, `--mem`, `--signal`, `--cred`, `--sync`, `--mach`, `--dyld`), and JSON output
+(`--json`):
+
+```shell
+sudo pykdebugparser parse-live --bsc
+sudo pykdebugparser parse-live --fs --process ls
+```
+
+The `syscalls` and `events` commands list the names `-s` and `-e` accept. Whenever the output falls more than `--max-lag`
+(2s by default) behind, `parse-live` skips ahead to recent events, or fails with `--no-skip-behind`. When it stops, it
+tells whether it kept up:
+
+```
+Read 2428814 events, the kernel dropped events 0 times, 0 events were skipped to catch up
+```
+
 Note that each CLI command has some more options, filtering thread ids, limiting the output count and more.
 
 ## Python
