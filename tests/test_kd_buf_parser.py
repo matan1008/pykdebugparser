@@ -65,6 +65,21 @@ def test_parse_v2_threadmap(reader_type, padding):
     assert parser.pids_names == {100: 'launchd', 200: 'x' * 19}
 
 
+@pytest.mark.parametrize('threadmap', [
+    [(0x65, 1, b'kernel_task'), (0x1001, 1, b'launchd')],
+    [(0x1001, 1, b'launchd'), (0x65, 1, b'kernel_task')],
+])
+def test_parse_v2_threadmap_kernel_task(threadmap):
+    # xnu marks the entries of kernel_task with pid 1, launchd's.
+    data = RAW_VERSION2_BYTES + struct.pack('<IQIIQ', len(threadmap), 0, 0, 1, 24000000).ljust(KdHeaderV2.SIZE, b'\x00')
+    data += b''.join(struct.pack('<QI20s', tid, pid, name) for tid, pid, name in threadmap)
+    data += b'\x00' * (-len(data) % V2_EVENTS_ALIGNMENT)
+    parser = KdBufParser()
+    assert list(parser.parse(BytesIO(data))) == []
+    assert parser.threads_pids == {0x65: 0, 0x1001: 1}
+    assert parser.pids_names == {0: 'kernel_task', 1: 'launchd'}
+
+
 @pytest.mark.parametrize('flags, is_64bit', [(0, False), (1, True)])
 def test_kd_header_v2(flags, is_64bit):
     header = KdHeaderV2.parse(v2_header(flags))
