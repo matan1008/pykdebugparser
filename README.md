@@ -197,6 +197,42 @@ Will result in:
 2021-10-21 10:07:18.230673  mediaserverd(38)   Creating service facility connection with <private>
 ```
 
+You can also trace this Mac live, without a dump (it requires root, but no entitlement):
+
+```shell
+sudo pykdebugparser live -sf 0x40c
+```
+
+Running `ls /tmp` meanwhile prints:
+
+```
+...
+2026-10-20 05:09:37.686500 ls(52516)                         fstatat64(4294967294, "private/tmp", 0x16f25d2a0, 0)
+2026-10-20 05:09:37.686522 ls(52516)                         open_nocancel("private/tmp", O_RDONLY | O_NONBLOCK | O_CLOEXEC), fd: 4
+...
+```
+
+Class (`-cf`) and subclass (`-sf`) filters are applied by the kernel, so narrowing them lets the trace keep up with a
+busy system. When it falls behind, the kernel drops events, and a `TRACE_LOST_EVENTS` trace marks the gap. Tracing
+stops (and the kernel trace facility is released) on Ctrl-C, SIGTERM or `-c` traces.
+
+`parse-live` traces this Mac live too, with filters by syscall (`-s open -s openat`), by event (`-e`), and by group
+(`--fs`, `--net`, `--proc`, `--io`, `--mem`, `--signal`, `--cred`, `--sync`, `--mach`, `--dyld`), and JSON output
+(`--json`):
+
+```shell
+sudo pykdebugparser parse-live --bsc
+sudo pykdebugparser parse-live --fs --process ls
+```
+
+The `syscalls` and `events` commands list the names `-s` and `-e` accept. Whenever the output falls more than `--max-lag`
+(2s by default) behind, `parse-live` fails, or skips ahead to recent events with `--skip-behind`. When it stops, it
+tells whether it kept up:
+
+```
+Read 2428814 events, the kernel dropped events 0 times, 0 events were skipped to catch up
+```
+
 Note that each CLI command has some more options, filtering thread ids, limiting the output count and more.
 
 ## Python
@@ -210,7 +246,21 @@ parser = PyKdebugParser()
 parser.color = True
 with open('kdebug.bin', 'rb') as fd:
     for trace in parser.formatted_traces(fd):
-        print(trace)
+        print(line)
+```
+
+The live trace of this Mac is available from Python too:
+
+```python
+from pykdebugparser.host_trace import HostTrace
+from pykdebugparser.pykdebugparser import PyKdebugParser
+
+with HostTrace(subclasses=[0x40c, 0x301]) as trace:  # BSD syscalls, and the VFS lookups that name their paths
+    parser = PyKdebugParser()
+    trace.configure_parser(parser)
+    parser.filter_subclass = [0x40c]  # Print the syscalls only
+    for line in parser.formatted_traces(trace):
+        print(line)
 ```
 
 ## Example

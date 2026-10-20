@@ -58,6 +58,8 @@ class PyKdebugParser:
         # Event ids (debugids without the function qualifier) to include, on top of the class/subclass filters.
         # Those without a handler are shown by name and raw values.
         self.filter_eventid = set()
+        # Whether the trace is live, which keeps the memory of a long trace flat (see `TracesParser`).
+        self.live = False
         self.show_timestamp = True
         self.show_name = True
         self.show_func_qual = True
@@ -80,11 +82,19 @@ class PyKdebugParser:
         self._exec_pid = None
 
     def kevents(self, kdebug: io.IOBase):
+        return self._kevents(kdebug)
+
+    def _kevents(self, kdebug: io.IOBase, ongoing_calls=None):
         events_generator = KdBufParser(self.threads_pids, self.pids_names).parse(kdebug)
         return self._filter_kevents(events_generator, self.filter_tid is not None,
-                                    bool(self.filter_class or self.filter_subclass or self.filter_eventid))
+                                    bool(self.filter_class or self.filter_subclass or self.filter_eventid),
+                                    ongoing_calls)
 
-    def _filter_kevents(self, events_generator, by_tid, by_class):
+    def _filter_kevents(self, events_generator, by_tid, by_class, ongoing_calls=None):
+        """
+        :param ongoing_calls: The ongoing calls of each thread (`TracesParser.on_going_events`), to drop the kevents of
+            DBG_FSYSTEM that no call takes (when that class is only traced for the paths of BSD syscalls).
+        """
         # A single generator instead of a `filter` chain, avoiding a lambda call per kevent per filter.
         filter_class = self.filter_class
         filter_subclass = self.filter_subclass
@@ -100,6 +110,9 @@ class PyKdebugParser:
             if by_class:
                 if not ((eventid >> 24 in filter_class) or (eventid >> 16 in filter_subclass)
                         or eventid in filter_eventid):
+                    continue
+                # Without a call of its thread, a lookup would only be a trace of its own, which isn't printed.
+                if ongoing_calls is not None and eventid >> 24 == DBG_FSYSTEM and not ongoing_calls.get(event.tid):
                     continue
             yield event
 
@@ -141,9 +154,10 @@ class PyKdebugParser:
         if add_fs_class:
             self.filter_class.append(DBG_FSYSTEM)
 
-        traces_parser = TracesParser(trace_codes_map, self.threads_pids, self.pids_names)
+        traces_parser = TracesParser(trace_codes_map, self.threads_pids, self.pids_names, self.live)
         traces_parser.raw_eventids = set(self.filter_eventid)
-        trace_generator = traces_parser.feed_generator(self.kevents(kdebug))
+        trace_generator = traces_parser.feed_generator(
+            self._kevents(kdebug, traces_parser.on_going_events if add_fs_class else None))
 
         if self.filter_process is not None:
             trace_generator = filter(self._filter_process_callback, trace_generator)

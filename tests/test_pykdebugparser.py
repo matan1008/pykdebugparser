@@ -8,7 +8,9 @@ import pytest
 from pykdebugparser.kd_buf_parser import RAW_VERSION2_BYTES, V2_EVENTS_ALIGNMENT
 from pykdebugparser.kevent import Kevent
 from pykdebugparser.pykdebugparser import PyKdebugParser
-from pykdebugparser.trace_codes import syscall_eventids
+from pykdebugparser.trace_codes import default_trace_codes, syscall_eventids
+from pykdebugparser import traces_parser
+from pykdebugparser.traces_parser import TracesParser
 
 # A trace version 2 header without threads, padded to where its events start.
 V2_HEADER = RAW_VERSION2_BYTES + b'\x00' * (V2_EVENTS_ALIGNMENT - len(RAW_VERSION2_BYTES))
@@ -203,6 +205,107 @@ def test_traces_keep_lost_events_when_filtered():
     traces = list(parser.formatted_traces(BytesIO(events_buf)))
     assert len(traces) == 1
     assert traces[0].endswith('TRACE_LOST_EVENTS: the kernel dropped trace events here')
+
+
+@pytest.mark.parametrize('live, max_ongoing_events, parsed', [(False, 12, True), (True, 13, True), (True, 12, False)])
+def test_traces_live_forget_calls_that_keep_too_many_events(monkeypatch, live, max_ongoing_events, parsed):
+    monkeypatch.setattr(traces_parser, 'MAX_ONGOING_EVENTS', max_ongoing_events)
+    lookup = struct.pack('<Q', 0x1234) + b'/usr/libexec/xpcproxy'.ljust(24, b'\x00')
+    events = [
+        _kd_buf(1000, 0x40c0014 | 1, (0x16b000000, 0, 0, 0)),  # open(path, O_RDONLY) start
+        _kd_buf(1001, 0x3010090 | 3, data=lookup),  # VFS_LOOKUP (start and end)
+    ]
+    events += [_kd_buf(1002, 0x1400140, (0, 3, 0, 0))] * 10  # MACH_PSET_AVG_EXEC_TIME
+    events.append(_kd_buf(1003, 0x40c0014 | 2, (0, 3, 0, 0)))  # open end: fd 3
+    parser = _traces_parser()
+    parser.live = live
+    traces = [t for t in parser.traces(BytesIO(V2_HEADER + b''.join(events))) if t.ktraces[0].timestamp == 1000]
+    # A live call that kept as many events as it may (12 before its end) is forgotten.
+    assert [str(t) for t in traces] == (['open("/usr/libexec/xpcproxy", O_RDONLY), fd: 3'] if parsed else [])
+
+
+@pytest.mark.parametrize('live', [False, True])
+def test_traces_live_forget_calls_ongoing_across_gaps(live):
+    events = [
+        _kd_buf(1000, 0x40c000c | 1, (3, 0x16b000000, 10, 0), tid=100),  # read start
+        _kd_buf(1001, 0x7020008, (1, 0, 0, 0), tid=300),  # TRACE_LOST_EVENTS
+        _kd_buf(1002, 0x40c000c | 1, (4, 0x16b000000, 10, 0), tid=200),  # read start
+        _kd_buf(1003, 0x7020008, (1, 0, 0, 0), tid=300),  # TRACE_LOST_EVENTS
+        _kd_buf(1004, 0x40c000c | 2, (0, 10, 0, 0), tid=100),  # read end
+        _kd_buf(1005, 0x40c000c | 2, (0, 10, 0, 0), tid=200),  # read end
+    ]
+    parser = _traces_parser()
+    parser.live = live
+    traces = [str(t) for t in parser.traces(BytesIO(V2_HEADER + b''.join(events)))]
+    # A live call ongoing since before the previous gap most likely lost its end.
+    assert traces == ['TRACE_LOST_EVENTS: the kernel dropped trace events here'] * 2 + \
+        ['read(3, 0x16b000000, 10), count: 10'] * (not live) + ['read(4, 0x16b000000, 10), count: 10']
+
+
+@pytest.mark.parametrize('live', [False, True])
+def test_traces_live_forget_the_strings_and_images_of_exited_processes(live):
+    initializer = [
+        _kd_buf(1003, 0x1f070000 | 1, (0, 0x1000, 0x1234, 0)),  # DBG_DYLD_TIMING_STATIC_INITIALIZER start, mh 0x1000
+        _kd_buf(1004, 0x1f070000 | 2),  # DBG_DYLD_TIMING_STATIC_INITIALIZER end
+    ]
+    events = [
+        _kd_buf(1000, 0x7010000 | 3, data=struct.pack('<QQ', 0, 0x10) + b'/usr/lib/libz'.ljust(16, b'\x00')),  # string 0x10
+        _kd_buf(1001, 0x1f050000, data=b'\x11' * 16 + struct.pack('<QQ', 0x1000, 0)),  # DYLD_uuid_map_a: at 0x1000
+        _kd_buf(1002, 0x1f050004, (0, 0x10, 0, 0)),  # DYLD_uuid_map_b: path string 0x10
+        *initializer,
+        _kd_buf(1005, 0x701000c, data=b'ls'.ljust(32, b'\x00')),  # TRACE_STRING_PROC_EXIT
+        *initializer,
+    ]
+    parser = TracesParser(default_trace_codes(), {100: 42}, {}, live)
+    traces = list(parser.feed_generator(PyKdebugParser().kevents(BytesIO(V2_HEADER + b''.join(events)))))
+    initializers = [trace.image for trace in traces if type(trace).__name__ == 'DyldStaticInitializer']
+    # A live trace forgets them once the process exits (or execs).
+    assert initializers == ['/usr/lib/libz', '' if live else '/usr/lib/libz']
+    assert bool(parser.global_strings) != live
+
+
+@pytest.mark.parametrize('live', [False, True])
+def test_traces_live_forget_released_strings(monkeypatch, live):
+    monkeypatch.setattr(traces_parser, 'MAX_RELEASED_STRINGS', 1)
+    events = []
+    for str_id in (0x10, 0x11):
+        name = struct.pack('<QQ', 0, str_id) + b'name'.ljust(16, b'\x00')
+        events.append(_kd_buf(1000, 0x7010000 | 3, data=name))  # TRACE_STRING_GLOBAL
+    for str_id in (0x10, 0x11):
+        events.append(_kd_buf(1001, 0x7010000 | 3, (0, str_id, 0, 0)))  # TRACE_STRING_GLOBAL without a string: release
+    parser = TracesParser(default_trace_codes(), {100: 42}, {}, live)
+    list(parser.feed_generator(PyKdebugParser().kevents(BytesIO(V2_HEADER + b''.join(events)))))
+    # Events may still name a released string for a short while, a live trace keeps the last ones released.
+    assert set(parser.global_strings) == ({0x11} if live else {0x10, 0x11})
+
+
+@pytest.mark.parametrize('live', [False, True])
+def test_traces_forget_the_calls_of_terminated_threads(live):
+    events = [
+        _kd_buf(1000, 0x40c0014 | 1, (0x16b000000, 0, 0, 0), tid=200),  # open start, never ends
+        _kd_buf(1001, 0x1400140, (0, 3, 0, 0), tid=200),  # MACH_PSET_AVG_EXEC_TIME
+        _kd_buf(1002, 0x700000c, (200, 0, 0, 0), tid=100),  # TRACE_DATA_THREAD_TERMINATE: tid 200
+    ]
+    parser = TracesParser(default_trace_codes(), {200: 42}, {}, live)
+    traces = list(parser.feed_generator(PyKdebugParser().kevents(BytesIO(V2_HEADER + b''.join(events)))))
+    assert str(traces[-1]) == 'Thread terminated tid: 200, pid: 42'
+    assert 200 not in parser.on_going_events
+    # A live trace forgets the thread too.
+    assert (200 in parser.threads_pids) != live
+
+
+def test_traces_dyld_strings_traced_before_the_trace():
+    # A live trace starts after dyld named some of its strings (a TRACE_STRING_GLOBAL each).
+    events = [
+        _kd_buf(1000, 0x1f080000 | 1, (0, 0x1234, 1, 0)),  # DBG_DYLD_TIMING_DLOPEN start, path string 0x1234
+        _kd_buf(1001, 0x1f080000 | 2, (0, 0x5678, 0, 0)),  # DBG_DYLD_TIMING_DLOPEN end
+        _kd_buf(1002, 0x1f08000c | 1, (0, 0x5678, 0x4321, 0)),  # DBG_DYLD_TIMING_DLSYM start, symbol string 0x4321
+        _kd_buf(1003, 0x1f08000c | 2, (0, 0x9000, 0, 0)),  # DBG_DYLD_TIMING_DLSYM end
+    ]
+    parser = _traces_parser()
+    traces = list(parser.traces(BytesIO(V2_HEADER + b''.join(events))))
+    assert [type(trace).__name__ for trace in traces] == ['Dlopen', 'Dlsym']
+    assert (traces[0].path, traces[1].symbol) == ('', '')
 
 
 def test_dict_traces():

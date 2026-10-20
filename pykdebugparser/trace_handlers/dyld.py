@@ -229,8 +229,11 @@ class Dladdr:
 # `_b` event with the id of its path string. The parser keeps the loaded images per process, so the events that only
 # carry a mach header (initializers, ObjC init, ...) can name their image.
 
+_NO_IMAGES = {}
+
+
 def _image_path(parser, events, mh):
-    return parser.dyld_images.get((parser.threads_pids.get(events[0].tid, -1), mh), '')
+    return parser.dyld_images.get(parser.threads_pids.get(events[0].tid, -1), _NO_IMAGES).get(mh, '')
 
 
 def _map_a(parser, events, cls):
@@ -244,11 +247,11 @@ def _map_b(parser, events, cls, loaded):
     path = parser.global_strings.get(args[1], '') if args[1] else ''
     load_addr = parser.dyld_pending_load_addr.pop(events[0].tid, None)
     if load_addr is not None:
-        key = (parser.threads_pids.get(events[0].tid, -1), load_addr)
+        pid = parser.threads_pids.get(events[0].tid, -1)
         if loaded and path:
-            parser.dyld_images[key] = path
+            parser.dyld_images.setdefault(pid, {})[load_addr] = path
         elif not loaded:
-            parser.dyld_images.pop(key, None)
+            parser.dyld_images.get(pid, _NO_IMAGES).pop(load_addr, None)
     return cls(events, args[0] & 0xffffffff, args[0] >> 32, path)
 
 
@@ -286,7 +289,7 @@ def handle_timing_launch_executable(parser, events):
 
 def handle_timing_map_image(parser, events):
     args = events[0].values
-    path = parser.global_strings[args[1]] if args[1] else ''
+    path = parser.global_strings.get(args[1], '') if args[1] else ''
     return DyldMapImage(events, path)
 
 
@@ -320,12 +323,12 @@ def handle_timing_bootstrap_start(parser, events):
 
 def handle_timing_dlopen(parser, events):
     args = events[0].values
-    path = parser.global_strings[args[1]] if args[1] else ''
+    path = parser.global_strings.get(args[1], '') if args[1] else ''
     return Dlopen(events, path, to_rtld_flags(args[2]), events[-1].values[1])
 
 
 def handle_timing_dlopen_preflight(parser, events):
-    return DlopenPreflight(events, parser.global_strings[events[0].values[1]], bool(events[-1].values[1]))
+    return DlopenPreflight(events, parser.global_strings.get(events[0].values[1], ''), bool(events[-1].values[1]))
 
 
 def handle_timing_dlclose(parser, events):
@@ -334,7 +337,7 @@ def handle_timing_dlclose(parser, events):
 
 def handle_timing_dlsym(parser, events):
     args = events[0].values
-    return Dlsym(events, args[1], parser.global_strings[args[2]], events[-1].values[1])
+    return Dlsym(events, args[1], parser.global_strings.get(args[2], ''), events[-1].values[1])
 
 
 def handle_timing_dladdr(parser, events):
