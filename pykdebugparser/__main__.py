@@ -10,8 +10,9 @@ import click
 from pykdebugparser.host_trace import DEFAULT_BUFFER_EVENTS, HostTrace, TraceLagError
 from pykdebugparser.kd_buf_parser import KdBufParser
 from pykdebugparser.pykdebugparser import PyKdebugParser
-from pykdebugparser.trace_codes import SYSCALL_GROUPS, default_trace_codes, event_eventids, group_mach_traps, \
-    syscall_eventids, syscall_names
+from pykdebugparser.selection import BSC_SUBCLASS, GROUP_HELP, Selection, captured_events, parse_live_selection
+from pykdebugparser.trace_codes import EVENT_GROUP_PREFIXES, SYSCALL_GROUPS, default_trace_codes, event_eventids, \
+    syscall_eventids
 
 
 @click.group()
@@ -150,9 +151,6 @@ def logs(kdebug_dump, count, tid, process, show_tid):
 DBG_BSD = 4
 # Subclass of VFS_LOOKUP, which names the paths of BSD syscalls.
 DBG_FSRW = 0x0301
-# Subclass of the BSD syscalls.
-BSC_SUBCLASS = 0x040c
-DBG_DYLD = 0x1f
 # How far (in seconds) parse-live may fall behind the system before it skips ahead to recent events.
 PARSE_LIVE_MAX_LAG = 2.0
 
@@ -181,7 +179,7 @@ def _validate_syscalls(ctx, param, names):
     try:
         syscall_eventids(names)
     except ValueError as e:
-        raise click.BadParameter(f'{e} (the `syscalls` command lists them)')
+        raise click.BadParameter(f'{e} (`pykdebugparser events` lists them as BSC_<name>)')
     return names
 
 
@@ -189,7 +187,7 @@ def _validate_events(ctx, param, names):
     try:
         event_eventids(names)
     except ValueError as e:
-        raise click.BadParameter(f'{e} (the `events` command lists them)')
+        raise click.BadParameter(f'{e} (`pykdebugparser events` lists them)')
     return names
 
 
@@ -245,8 +243,33 @@ def live(count, tid, process, show_tid, class_filters, subclass_filters, color, 
             signal.signal(signum, handler)
 
 
-def _group_option(group, help_):
-    return click.option(f'--{group}', f'group_{group}', is_flag=True, help=f'{help_} (`syscalls --group {group}`).')
+def _selection_options(func):
+    """The options that select what parse-live prints, shared by `parse-live` and `events` (and pymobiledevice3's)."""
+    options = [
+        click.option('--bsc', is_flag=True, help='The BSD syscalls.'),
+        class_filter,
+        subclass_filter,
+        click.option('-s', '--syscall', 'syscalls', multiple=True, callback=_validate_syscalls,
+                     help='This syscall (e.g. open, openat; with its _nocancel and _dprotected_np variants), with its '
+                          'paths. Can be specified multiple times.'),
+        click.option('-e', '--event', 'events', multiple=True, callback=_validate_events,
+                     help='This event, by its trace code name (e.g. DBG_DYLD_TIMING_DLSYM; `events TEXT` finds the '
+                          'name). Can be specified multiple times.'),
+        *(click.option(f'--{group}', f'group_{group}', is_flag=True, help=GROUP_HELP[group])
+          for group in SYSCALL_GROUPS),
+        click.option('--dyld', is_flag=True, help='dyld events (image loads, dlopen, dlsym, ...), filtered by the kernel.'),
+        *(click.option(f'--{group}', f'group_{group}', is_flag=True, help=GROUP_HELP[group])
+          for group in EVENT_GROUP_PREFIXES),
+    ]
+    for option in reversed(options):
+        func = option(func)
+    return func
+
+
+def _selection(bsc, class_filters, subclass_filters, syscalls, events, dyld, groups) -> Selection:
+    return parse_live_selection(bsc=bsc, class_filters=class_filters, subclass_filters=subclass_filters,
+                                syscalls=syscalls, events=events, dyld=dyld,
+                                groups=[group[len('group_'):] for group, on in groups.items() if on])
 
 
 @cli.command('parse-live')
@@ -254,27 +277,7 @@ def _group_option(group, help_):
 @tid_filter
 @process_filter
 @show_tid
-@class_filter
-@subclass_filter
-@click.option('--bsc', is_flag=True, help='Print the BSD syscalls.')
-@click.option('-s', '--syscall', 'syscalls', multiple=True, callback=_validate_syscalls,
-              help='Only print this syscall (e.g. open, openat; with its _nocancel variant), with its paths. Can be '
-                   'specified multiple times; the `syscalls` command lists the names. The kernel can only filter whole '
-                   'subclasses, so it traces every syscall and the others are dropped right after decoding.')
-@click.option('-e', '--event', 'events', multiple=True, callback=_validate_events,
-              help='Only print this event (a trace code name, e.g. DBG_DYLD_TIMING_DLOPEN). Can be specified multiple '
-                   'times; the `events` command lists the names. The kernel traces the event\'s whole subclass, and '
-                   'the other events in it are dropped right after decoding.')
-@_group_option('fs', 'Print the syscalls that take a path')
-@_group_option('net', 'Print the socket syscalls')
-@_group_option('proc', 'Print the process lifecycle syscalls')
-@_group_option('io', 'Print the syscalls on file descriptors: read, write, ...')
-@_group_option('mem', 'Print memory mapping syscalls and Mach traps')
-@_group_option('signal', 'Print the signal syscalls')
-@_group_option('cred', 'Print credential, code signing and policy checks, and access to other tasks')
-@_group_option('sync', 'Print locks, condition variables, kqueues and workqueues')
-@_group_option('mach', 'Print the Mach traps')
-@click.option('--dyld', is_flag=True, help='Print dyld events (image loads, dlopen, dlsym, ...).')
+@_selection_options
 @click.option('--json', 'json_output', is_flag=True,
               help='Print each trace as a JSON object, one per line: its time, thread, process, event name, parsed '
                    'fields and text.')
@@ -291,23 +294,21 @@ def _group_option(group, help_):
                    'fails (--no-skip-behind).')
 @click.option('-b', '--buffer-events', type=click.INT, default=DEFAULT_BUFFER_EVENTS, show_default=True,
               help='Kernel trace buffer size, in events.')
-def parse_live(count, tid, process, show_tid, class_filters, subclass_filters, bsc, syscalls, events, dyld,
+def parse_live(count, tid, process, show_tid, bsc, class_filters, subclass_filters, syscalls, events, dyld,
                json_output, color, color_mode, skip_behind, max_lag, buffer_events, **groups):
     """
     Print traces (syscalls, thread events, etc.) of this Mac in real time (requires root).
 
-    Class and subclass filters are applied by the kernel, narrowing them lets the trace keep up with a busy system.
+    The selections add up. The kernel filters by subclass at best, so the events not selected are dropped right after
+    decoding. `events` with the same options lists the events that are printed.
     """
-    # Groups add up: each one adds its syscalls and Mach traps to what is printed.
-    groups = [group[len('group_'):] for group, on in groups.items() if on]
-    syscall_ids = syscall_eventids([*syscalls, *(name for group in groups for name in SYSCALL_GROUPS[group])])
-    event_ids = event_eventids([*events, *(name for group in groups for name in group_mach_traps(group))])
-    class_filters = list(class_filters) + ([DBG_DYLD] if dyld else [])
-    subclass_filters = list(subclass_filters) + ([BSC_SUBCLASS] if bsc else [])
+    selection = _selection(bsc, class_filters, subclass_filters, syscalls, events, dyld, groups)
+    class_filters = selection.classes
+    subclass_filters = selection.subclasses
     # The kernel filters by subclass at best: trace every syscall (and the subclass of each event), and filter the
     # chosen ones while parsing.
-    kernel_subclasses = subclass_filters + ([BSC_SUBCLASS] if syscall_ids else [])
-    kernel_subclasses += sorted({eventid >> 16 for eventid in event_ids})
+    kernel_subclasses = subclass_filters + ([BSC_SUBCLASS] if selection.syscall_ids else [])
+    kernel_subclasses += sorted({eventid >> 16 for eventid in selection.event_ids})
     if DBG_BSD in class_filters or any(sc >> 8 == DBG_BSD for sc in kernel_subclasses):
         kernel_subclasses.append(DBG_FSRW)
     colored_columns = color and color_mode.lower() == 'fast'
@@ -334,7 +335,7 @@ def parse_live(count, tid, process, show_tid, class_filters, subclass_filters, b
             parser.filter_process = process
             parser.filter_class = class_filters
             parser.filter_subclass = subclass_filters
-            parser.filter_eventid = syscall_ids | event_ids
+            parser.filter_eventid = selection.eventids
             parser.show_tid = show_tid
             parser.color = color and not colored_columns
             write = out.write
@@ -376,18 +377,21 @@ def parse_live(count, tid, process, show_tid, class_filters, subclass_filters, b
 
 
 @cli.command()
-def events():
-    """List the event names that `parse-live --event` accepts."""
-    for name in sorted(set(default_trace_codes().values())):
-        print(name)
+@click.argument('pattern', required=False)
+@_selection_options
+def events(pattern, bsc, class_filters, subclass_filters, syscalls, events, dyld, **groups):
+    """
+    List the events `parse-live` prints with the same options (e.g. `events --fs`, `events -s open`), or every event
+    name `parse-live --event` accepts.
 
-
-@cli.command()
-@click.option('--group', type=click.Choice(list(SYSCALL_GROUPS)),
-              help='Only list the syscalls and Mach traps of this parse-live group (--fs, ...).')
-def syscalls(group):
-    """List the syscall names that `parse-live --syscall` accepts, or the syscalls and Mach traps of a group."""
-    names = syscall_names() if group is None else [*SYSCALL_GROUPS[group], *group_mach_traps(group)]
+    PATTERN only lists the names containing it, ignoring case (e.g. dlsym).
+    """
+    if bsc or class_filters or subclass_filters or syscalls or events or dyld or any(groups.values()):
+        names = captured_events(_selection(bsc, class_filters, subclass_filters, syscalls, events, dyld, groups))
+    else:
+        names = sorted(set(default_trace_codes().values()))
+    if pattern is not None:
+        names = [name for name in names if pattern.lower() in name.lower()]
     for name in names:
         print(name)
 
