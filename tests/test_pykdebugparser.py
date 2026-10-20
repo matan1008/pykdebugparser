@@ -242,16 +242,56 @@ def test_traces_live_forget_calls_ongoing_across_gaps(live):
         ['read(3, 0x16b000000, 10), count: 10'] * (not live) + ['read(4, 0x16b000000, 10), count: 10']
 
 
-def test_traces_forget_the_calls_of_terminated_threads():
+@pytest.mark.parametrize('live', [False, True])
+def test_traces_live_forget_the_strings_and_images_of_exited_processes(live):
+    initializer = [
+        _kd_buf(1003, 0x1f070000 | 1, (0, 0x1000, 0x1234, 0)),  # DBG_DYLD_TIMING_STATIC_INITIALIZER start, mh 0x1000
+        _kd_buf(1004, 0x1f070000 | 2),  # DBG_DYLD_TIMING_STATIC_INITIALIZER end
+    ]
+    events = [
+        _kd_buf(1000, 0x7010000 | 3, data=struct.pack('<QQ', 0, 0x10) + b'/usr/lib/libz'.ljust(16, b'\x00')),  # string 0x10
+        _kd_buf(1001, 0x1f050000, data=b'\x11' * 16 + struct.pack('<QQ', 0x1000, 0)),  # DYLD_uuid_map_a: at 0x1000
+        _kd_buf(1002, 0x1f050004, (0, 0x10, 0, 0)),  # DYLD_uuid_map_b: path string 0x10
+        *initializer,
+        _kd_buf(1005, 0x701000c, data=b'ls'.ljust(32, b'\x00')),  # TRACE_STRING_PROC_EXIT
+        *initializer,
+    ]
+    parser = TracesParser(default_trace_codes(), {100: 42}, {}, live)
+    traces = list(parser.feed_generator(PyKdebugParser().kevents(BytesIO(V2_HEADER + b''.join(events)))))
+    initializers = [trace.image for trace in traces if type(trace).__name__ == 'DyldStaticInitializer']
+    # A live trace forgets them once the process exits (or execs).
+    assert initializers == ['/usr/lib/libz', '' if live else '/usr/lib/libz']
+    assert bool(parser.global_strings) != live
+
+
+@pytest.mark.parametrize('live', [False, True])
+def test_traces_live_forget_released_strings(monkeypatch, live):
+    monkeypatch.setattr(traces_parser, 'MAX_RELEASED_STRINGS', 1)
+    events = []
+    for str_id in (0x10, 0x11):
+        name = struct.pack('<QQ', 0, str_id) + b'name'.ljust(16, b'\x00')
+        events.append(_kd_buf(1000, 0x7010000 | 3, data=name))  # TRACE_STRING_GLOBAL
+    for str_id in (0x10, 0x11):
+        events.append(_kd_buf(1001, 0x7010000 | 3, (0, str_id, 0, 0)))  # TRACE_STRING_GLOBAL without a string: release
+    parser = TracesParser(default_trace_codes(), {100: 42}, {}, live)
+    list(parser.feed_generator(PyKdebugParser().kevents(BytesIO(V2_HEADER + b''.join(events)))))
+    # Events may still name a released string for a short while, a live trace keeps the last ones released.
+    assert set(parser.global_strings) == ({0x11} if live else {0x10, 0x11})
+
+
+@pytest.mark.parametrize('live', [False, True])
+def test_traces_forget_the_calls_of_terminated_threads(live):
     events = [
         _kd_buf(1000, 0x40c0014 | 1, (0x16b000000, 0, 0, 0), tid=200),  # open start, never ends
         _kd_buf(1001, 0x1400140, (0, 3, 0, 0), tid=200),  # MACH_PSET_AVG_EXEC_TIME
         _kd_buf(1002, 0x700000c, (200, 0, 0, 0), tid=100),  # TRACE_DATA_THREAD_TERMINATE: tid 200
     ]
-    parser = TracesParser(default_trace_codes(), {}, {})
+    parser = TracesParser(default_trace_codes(), {200: 42}, {}, live)
     traces = list(parser.feed_generator(PyKdebugParser().kevents(BytesIO(V2_HEADER + b''.join(events)))))
-    assert str(traces[-1]) == 'Thread terminated tid: 200'
+    assert str(traces[-1]) == 'Thread terminated tid: 200, pid: 42'
     assert 200 not in parser.on_going_events
+    # A live trace forgets the thread too.
+    assert (200 in parser.threads_pids) != live
 
 
 def test_traces_dyld_strings_traced_before_the_trace():
