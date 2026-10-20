@@ -216,18 +216,18 @@ Class (`-cf`) and subclass (`-sf`) filters are applied by the kernel, so narrowi
 busy system. When it falls behind, the kernel drops events, and a `TRACE_LOST_EVENTS` trace marks the gap. Tracing
 stops (and the kernel trace facility is released) on Ctrl-C, SIGTERM or `-c` traces.
 
-`parse-live` traces this Mac live too, with filters by syscall (`-s open -s openat`), by event (`-e`), and by group
-(`--fs`, `--net`, `--proc`, `--io`, `--mem`, `--signal`, `--cred`, `--sync`, `--mach`, `--dyld`), and JSON output
-(`--json`):
+`parse-live` traces this Mac live too, with the same options as pymobiledevice3's `parse-live` for a device: by syscall
+(`-s open -s openat`), by event (`-e`), and by group (`--fs`, `--net`, `--proc`, `--io`, `--mem`, `--signal`, `--cred`,
+`--sync`, `--mach`, `--dyld`, `--xpc`, `--dispatch`, `--runloop`), which add up, and JSON output (`--json`):
 
 ```shell
 sudo pykdebugparser parse-live --bsc
 sudo pykdebugparser parse-live --fs --process ls
 ```
 
-The `syscalls` and `events` commands list the names `-s` and `-e` accept. Whenever the output falls more than `--max-lag`
-(2s by default) behind, `parse-live` fails, or skips ahead to recent events with `--skip-behind`. When it stops, it
-tells whether it kept up:
+`events` with the same options lists the events that are printed (`events --fs`, `events -s open`), and `events TEXT`
+finds an event's name. Whenever the output falls more than `--max-lag` (2s by default) behind, `parse-live` fails, or
+skips ahead to recent events with `--skip-behind`. When it stops, it tells whether it kept up:
 
 ```
 Read 2428814 events, the kernel dropped events 0 times, 0 events were skipped to catch up

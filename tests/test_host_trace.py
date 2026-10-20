@@ -12,6 +12,7 @@ from pykdebugparser.host_trace import CTL_KERN, KDBG_TYPENONE, KERN_KDEBUG, KERN
     KERN_KDPIDEX, KERN_KDREADTR, KERN_KDREMOVE, KERN_KDSET_TYPEFILTER, KERN_KDSETBUF, KERN_KDSETUP, KERN_KDTHRMAP, \
     HostTrace, typefilter
 from pykdebugparser.pykdebugparser import PyKdebugParser
+from pykdebugparser.trace_codes import event_eventids, group_events
 
 THREADMAP = struct.pack('<QI20s', 100, 42, b'probe') + struct.pack('<QI20s', 101, 1, b'launchd')
 OP_NAMES = {
@@ -329,16 +330,31 @@ def test_cli_parse_live_requires_root(parse_live_fake):
     assert 'requires root' in result.output
 
 
-def test_cli_syscalls():
-    result = CliRunner().invoke(main.cli, ['syscalls'])
-    assert {'open', 'openat', 'read'} <= set(result.output.split())
-    assert 'open_nocancel' not in result.output.split()
-    result = CliRunner().invoke(main.cli, ['syscalls', '--group', 'mem'])
-    assert {'mmap', 'MSC_mach_vm_map_trap'} <= set(result.output.split())
-
-
 def test_cli_events():
-    assert 'DBG_DYLD_TIMING_DLOPEN' in CliRunner().invoke(main.cli, ['events']).output.split()
+    names = CliRunner().invoke(main.cli, ['events']).output.split()
+    assert {'DBG_DYLD_TIMING_DLOPEN', 'BSC_open'} <= set(names)
+
+
+@pytest.mark.parametrize('args, names', [
+    (['-s', 'open'], ['BSC_open', 'BSC_open_dprotected_np', 'BSC_open_nocancel']),
+    (['--fs', 'guarded'], ['BSC_guarded_open_dprotected_np', 'BSC_guarded_open_np']),
+    (['--xpc', 'send_message'], ['XPC_connection_send_message', 'XPC_connection_send_message_with_reply',
+                                 'XPC_connection_send_message_with_reply_sync']),
+    (['--mem', 'MSC_'], ['MSC_kern_mach_vm_purgable_control_trap', 'MSC_mach_vm_allocate_trap',
+                         'MSC_mach_vm_deallocate_trap', 'MSC_mach_vm_map_trap', 'MSC_mach_vm_protect_trap']),
+    # A class prints only the events pykdebugparser decodes, the XPC ones are printed when selected by id.
+    (['-cf', '0x29'], []),
+])
+def test_cli_events_with_selection(args, names):
+    assert CliRunner().invoke(main.cli, ['events', *args]).output.split() == names
+
+
+def test_cli_parse_live_event_groups(parse_live_fake):
+    result = CliRunner().invoke(main.cli, ['parse-live', '--xpc', '--fs'])
+    assert result.exit_code == 0, result.output
+    # The kernel traces the subclasses of the XPC events, and every syscall with the lookups that name their paths.
+    xpc_subclasses = sorted({eventid >> 16 for eventid in event_eventids(group_events('xpc'))})
+    assert parse_live_fake.buffers['typefilter'] == typefilter([], [0x40c, *xpc_subclasses, 0x301])
 
 
 def test_raise_when_behind_without_skip_behind():
