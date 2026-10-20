@@ -226,7 +226,7 @@ sudo pykdebugparser parse-live --fs --process ls
 ```
 
 The `syscalls` and `events` commands list the names `-s` and `-e` accept. Whenever the output falls more than `--max-lag`
-(2s by default) behind, `parse-live` skips ahead to recent events, or fails with `--no-skip-behind`. When it stops, it
+(2s by default) behind, `parse-live` fails, or skips ahead to recent events with `--skip-behind`. When it stops, it
 tells whether it kept up:
 
 ```

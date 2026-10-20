@@ -363,12 +363,13 @@ def test_cli_parse_live_lag_error(parse_live_fake, monkeypatch):
         return trace
 
     monkeypatch.setattr(main, 'HostTrace', host_trace_)
-    result = CliRunner().invoke(main.cli, ['parse-live', '--bsc', '--no-skip-behind', '--max-lag', '0.5'])
+    result = CliRunner().invoke(main.cli, ['parse-live', '--bsc', '--max-lag', '0.5'])
     assert result.exit_code == 1
     lines = result.output.splitlines()
     assert 'Read 5 events, the kernel dropped events 0 times, 0 events were skipped to catch up' in lines
     assert lines[-1].startswith('Error: Fell ')
-    assert lines[-1].endswith('more than the max lag (0.5s): narrow the trace, raise --max-lag, or use --skip-behind')
+    assert lines[-1].endswith('more than the max lag (0.5s). To skip ahead to recent events instead, pass '
+                              '--skip-behind (or allow more lag with --max-lag, or narrow the trace)')
 
 
 def test_cli_parse_live_max_lag_must_be_positive(parse_live_fake):

@@ -283,7 +283,7 @@ def _group_option(group, help_):
               show_default=True,
               help="Trace color style: 'rich' also colors the event by what it shows (call, strings, numbers, errors, "
                    "...), 'fast' colors only the columns.")
-@click.option('--skip-behind/--no-skip-behind', default=True, show_default=True,
+@click.option('--skip-behind/--no-skip-behind', default=False, show_default=True,
               help='Skip ahead to recent events whenever output falls more than --max-lag behind the system, instead of '
                    'failing. Without class/subclass filters the system can trace events faster than they can be parsed.')
 @click.option('--max-lag', type=click.FloatRange(min=0, min_open=True), default=PARSE_LIVE_MAX_LAG, show_default=True,
@@ -359,7 +359,8 @@ def parse_live(count, tid, process, show_tid, class_filters, subclass_filters, b
                 click.echo(f'Read {trace.events} events, the kernel dropped events {trace.lost_events} times, '
                            f'{trace.skipped_events} events were skipped to catch up', err=True)
     except TraceLagError as e:
-        raise click.ClickException(f'{e}: narrow the trace, raise --max-lag, or use --skip-behind')
+        raise click.ClickException(f'{e}. To skip ahead to recent events instead, pass --skip-behind (or allow more '
+                                   f'lag with --max-lag, or narrow the trace)')
     except OSError as e:
         if e.errno in (errno.EPERM, errno.EACCES):
             raise click.ClickException('Tracing requires root, run with sudo')
