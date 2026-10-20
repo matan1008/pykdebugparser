@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools>=43.0.0", "setuptools_scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pykdebugparser"
-version = "1.6.4"
+dynamic = ["version"]
 description = "Python parser for kdebug events"
 readme.file = "README.md"
 readme.content-type = "text/markdown"
@@ -41,6 +41,12 @@ pykdebugparser = "pykdebugparser.__main__:cli"
 
 [tool.setuptools.packages.find]
 exclude = ["tests*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "pykdebugparser._version.__version__" }
+
+[tool.setuptools_scm]
+version_file = "pykdebugparser/_version.py"
 
 [tool.setuptools.package-data]
 pykdebugparser = ["*.txt", "*.TXT", "*.codes"]

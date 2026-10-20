@@ -23,6 +23,8 @@ wheels/
 pip-wheel-metadata/
 share/python-wheels/
 *.egg-info/
+# Written by setuptools-scm.
+pykdebugparser/_version.py
 .installed.cfg
 *.egg
 MANIFEST
