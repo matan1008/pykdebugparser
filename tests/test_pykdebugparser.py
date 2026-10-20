@@ -207,6 +207,67 @@ def test_traces_keep_lost_events_when_filtered():
     assert traces[0].endswith('TRACE_LOST_EVENTS: the kernel dropped trace events here')
 
 
+def _two_processes():
+    # Thread 200 of launchd (pid 300) and thread 201 of Preferences (pid 301).
+    return [
+        _kd_buf(900, 0x7000004, (200, 300, 0, 0)),  # TRACE_DATA_NEWTHREAD
+        _kd_buf(901, 0x7010004, data=b'launchd'.ljust(32, b'\x00')),  # TRACE_STRING_NEWTHREAD
+        _kd_buf(902, 0x7000004, (201, 301, 0, 0)),  # TRACE_DATA_NEWTHREAD
+        _kd_buf(903, 0x7010004, data=b'Preferences'.ljust(32, b'\x00')),  # TRACE_STRING_NEWTHREAD
+    ]
+
+
+@pytest.mark.parametrize('process', ['Preferences', '301'])
+def test_traces_filter_process_before_parsing(monkeypatch, process):
+    events = _two_processes() + [
+        _kd_buf(1000, 0x40c000c | 1, (3, 0x16b000000, 10, 0), tid=200),  # read start
+        _kd_buf(1001, 0x40c000c | 2, (0, 10, 0, 0), tid=200),  # read end
+        _kd_buf(1002, 0x40c000c | 1, (4, 0x16b000000, 10, 0), tid=201),  # read start
+        _kd_buf(1003, 0x40c000c | 2, (0, 10, 0, 0), tid=201),  # read end
+        _kd_buf(1004, 0x40c000c | 1, (5, 0x16b000000, 10, 0), tid=202),  # read start, of a thread not known yet
+        _kd_buf(1005, 0x40c000c | 2, (0, 10, 0, 0), tid=202),  # read end
+    ]
+    fed_tids = []
+    feed = TracesParser.feed
+    monkeypatch.setattr(TracesParser, 'feed', lambda self, event: fed_tids.append(event.tid) or feed(self, event))
+    parser = _traces_parser()
+    parser.filter_process = process
+    assert [str(t) for t in parser.traces(BytesIO(V2_HEADER + b''.join(events)))] == \
+        ['read(4, 0x16b000000, 10), count: 10']
+    # The kevents of a thread known to be of another process aren't parsed, those of a thread not known yet are.
+    assert 200 not in fed_tids
+    assert 202 in fed_tids
+
+
+@pytest.mark.parametrize('process, traces', [
+    ('launchd', ['P_RdData, dev: 1,2, blkno: 0x10, size: 4096, resid: 0, error: 0']),
+    ('Preferences', []),
+])
+def test_traces_filter_process_disk_io_completed_on_another_thread(process, traces):
+    events = _two_processes() + [
+        _kd_buf(1000, 0x3020008, (0xb0f, 0x1000002, 0x10, 4096), tid=200),  # P_RdData issue
+        _kd_buf(1001, 0x302000c, (0xb0f, 0, 0, 0), tid=201),  # P_RdDataDone, on the thread it interrupted
+    ]
+    parser = _traces_parser()
+    parser.filter_process = process
+    # The I/O is of the thread that issued it.
+    assert [str(t) for t in parser.traces(BytesIO(V2_HEADER + b''.join(events)))] == traces
+
+
+def test_traces_filter_process_exec():
+    events = _two_processes() + [
+        _kd_buf(1000, 0x40c00ec | 1, (0x16b000000, 0, 0, 0), tid=200),  # execve start
+        _kd_buf(1001, 0x7000008, (300, 0, 0, 0), tid=200),  # TRACE_DATA_EXEC
+        _kd_buf(1002, 0x7010008, data=b'Settings'.ljust(32, b'\x00'), tid=200),  # TRACE_STRING_EXEC
+        _kd_buf(1003, 0x40c00ec | 2, (0, 0, 0, 0), tid=200),  # execve end
+    ]
+    parser = _traces_parser()
+    parser.filter_process = 'Settings'
+    # The execve began in launchd, and is of the process it made.
+    assert [str(t) for t in parser.traces(BytesIO(V2_HEADER + b''.join(events)))] == \
+        ['New process name: Settings', 'execve()']
+
+
 @pytest.mark.parametrize('live, max_ongoing_events, parsed', [(False, 12, True), (True, 13, True), (True, 12, False)])
 def test_traces_live_forget_calls_that_keep_too_many_events(monkeypatch, live, max_ongoing_events, parsed):
     monkeypatch.setattr(traces_parser, 'MAX_ONGOING_EVENTS', max_ongoing_events)

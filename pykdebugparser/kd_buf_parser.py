@@ -194,8 +194,11 @@ class KdBufParser:
         self.threads_pids.clear()
         self.pids_names.clear()
         for thread in parsed_threadmap:
-            self.threads_pids[thread.tid] = thread.pid
-            self.pids_names[thread.pid] = thread.process
+            # xnu marks the threadmap's entries valid with their pid, and those of kernel_task (pid 0) with 1, the pid
+            # of launchd (`_resolve_kernel_task` in bsd/kern/kdebug.c).
+            pid = 0 if thread.pid == 1 and thread.process == 'kernel_task' else thread.pid
+            self.threads_pids[thread.tid] = pid
+            self.pids_names[pid] = thread.process
 
     def parse_v2(self, reader: io.IOBase):
         """
