@@ -60,6 +60,7 @@ subclass_filter = click.option('-sf', '--subclass-filters', multiple=True, type=
 @class_filter
 @subclass_filter
 def kevents(kdebug_dump, count, tid, show_tid, class_filters, subclass_filters):
+    """Print the raw kevents of a kdebug dump."""
     parser = PyKdebugParser()
     parser.filter_class = class_filters
     parser.filter_subclass = subclass_filters
@@ -78,6 +79,7 @@ def kevents(kdebug_dump, count, tid, show_tid, class_filters, subclass_filters):
 @subclass_filter
 @click.option('--color/--no-color', default=True, help='Whether to print with color or not.')
 def traces(kdebug_dump, count, tid, process, show_tid, class_filters, subclass_filters, color):
+    """Print the traces (syscalls, thread events, etc.) of a kdebug dump."""
     parser = PyKdebugParser()
     parser.filter_tid = tid
     parser.filter_process = process
@@ -95,6 +97,7 @@ def traces(kdebug_dump, count, tid, process, show_tid, class_filters, subclass_f
 @process_filter
 @show_tid
 def callstacks(kdebug_dump, count, tid, process, show_tid):
+    """Print the callstacks (PERF events) of a kdebug dump."""
     parser = PyKdebugParser()
     parser.filter_tid = tid
     parser.filter_process = process
@@ -105,6 +108,7 @@ def callstacks(kdebug_dump, count, tid, process, show_tid):
 @cli.command()
 @dump_input
 def processes(kdebug_dump):
+    """Print the processes listed in a kdebug dump (version 3, such as ktrace's), as JSON."""
     parser = KdBufParser({}, {})
     list(parser.parse(kdebug_dump))
     print(json.dumps(parser.processes, indent=4))
@@ -113,6 +117,7 @@ def processes(kdebug_dump):
 @cli.command()
 @dump_input
 def kexts(kdebug_dump):
+    """Print the kernel extensions listed in a kdebug dump (version 3, such as ktrace's), as JSON."""
     parser = KdBufParser({}, {})
     list(parser.parse(kdebug_dump))
     print(json.dumps(parser.kernel_extensions, indent=4))
@@ -121,6 +126,7 @@ def kexts(kdebug_dump):
 @cli.command()
 @dump_input
 def images(kdebug_dump):
+    """Print the images listed in a kdebug dump (version 3, such as ktrace's), as JSON."""
     parser = KdBufParser({}, {})
     list(parser.parse(kdebug_dump))
     print(json.dumps(parser.images, indent=4))
@@ -133,6 +139,7 @@ def images(kdebug_dump):
 @process_filter
 @show_tid
 def logs(kdebug_dump, count, tid, process, show_tid):
+    """Print the os_log messages of a kdebug dump."""
     parser = PyKdebugParser()
     parser.filter_tid = tid
     parser.filter_process = process
