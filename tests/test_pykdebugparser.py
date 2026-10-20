@@ -205,6 +205,20 @@ def test_traces_keep_lost_events_when_filtered():
     assert traces[0].endswith('TRACE_LOST_EVENTS: the kernel dropped trace events here')
 
 
+def test_traces_dyld_strings_traced_before_the_trace():
+    # A live trace starts after dyld named some of its strings (a TRACE_STRING_GLOBAL each).
+    events = [
+        _kd_buf(1000, 0x1f080000 | 1, (0, 0x1234, 1, 0)),  # DBG_DYLD_TIMING_DLOPEN start, path string 0x1234
+        _kd_buf(1001, 0x1f080000 | 2, (0, 0x5678, 0, 0)),  # DBG_DYLD_TIMING_DLOPEN end
+        _kd_buf(1002, 0x1f08000c | 1, (0, 0x5678, 0x4321, 0)),  # DBG_DYLD_TIMING_DLSYM start, symbol string 0x4321
+        _kd_buf(1003, 0x1f08000c | 2, (0, 0x9000, 0, 0)),  # DBG_DYLD_TIMING_DLSYM end
+    ]
+    parser = _traces_parser()
+    traces = list(parser.traces(BytesIO(V2_HEADER + b''.join(events))))
+    assert [type(trace).__name__ for trace in traces] == ['Dlopen', 'Dlsym']
+    assert (traces[0].path, traces[1].symbol) == ('', '')
+
+
 def test_dict_traces():
     events = [
         _kd_buf(1000, 0x40c0014 | 1, (0x16d2c2b80, 0, 0, 0)),  # open start

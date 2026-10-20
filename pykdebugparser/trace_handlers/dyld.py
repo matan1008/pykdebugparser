@@ -286,7 +286,7 @@ def handle_timing_launch_executable(parser, events):
 
 def handle_timing_map_image(parser, events):
     args = events[0].values
-    path = parser.global_strings[args[1]] if args[1] else ''
+    path = parser.global_strings.get(args[1], '') if args[1] else ''
     return DyldMapImage(events, path)
 
 
@@ -320,12 +320,12 @@ def handle_timing_bootstrap_start(parser, events):
 
 def handle_timing_dlopen(parser, events):
     args = events[0].values
-    path = parser.global_strings[args[1]] if args[1] else ''
+    path = parser.global_strings.get(args[1], '') if args[1] else ''
     return Dlopen(events, path, to_rtld_flags(args[2]), events[-1].values[1])
 
 
 def handle_timing_dlopen_preflight(parser, events):
-    return DlopenPreflight(events, parser.global_strings[events[0].values[1]], bool(events[-1].values[1]))
+    return DlopenPreflight(events, parser.global_strings.get(events[0].values[1], ''), bool(events[-1].values[1]))
 
 
 def handle_timing_dlclose(parser, events):
@@ -334,7 +334,7 @@ def handle_timing_dlclose(parser, events):
 
 def handle_timing_dlsym(parser, events):
     args = events[0].values
-    return Dlsym(events, args[1], parser.global_strings[args[2]], events[-1].values[1])
+    return Dlsym(events, args[1], parser.global_strings.get(args[2], ''), events[-1].values[1])
 
 
 def handle_timing_dladdr(parser, events):
