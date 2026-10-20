@@ -126,6 +126,9 @@ def handle_trace_data_thread_terminate(parser, events):
     tid = events[0].values[0]
     event = TraceDataThreadTerminate(events, tid, parser.threads_pids.get(tid))
     event.name = parser.tids_names.get(tid, '')
+    # The calls the thread didn't end never will, forget them (and the events kept for them).
+    parser.on_going_events.pop(tid, None)
+    parser.on_going_traces.pop(tid, None)
     return event
 
 

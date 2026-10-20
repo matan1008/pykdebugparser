@@ -8,7 +8,8 @@ import pytest
 from pykdebugparser.kd_buf_parser import RAW_VERSION2_BYTES, V2_EVENTS_ALIGNMENT
 from pykdebugparser.kevent import Kevent
 from pykdebugparser.pykdebugparser import PyKdebugParser
-from pykdebugparser.trace_codes import syscall_eventids
+from pykdebugparser.trace_codes import default_trace_codes, syscall_eventids
+from pykdebugparser.traces_parser import TracesParser
 
 # A trace version 2 header without threads, padded to where its events start.
 V2_HEADER = RAW_VERSION2_BYTES + b'\x00' * (V2_EVENTS_ALIGNMENT - len(RAW_VERSION2_BYTES))
@@ -203,6 +204,18 @@ def test_traces_keep_lost_events_when_filtered():
     traces = list(parser.formatted_traces(BytesIO(events_buf)))
     assert len(traces) == 1
     assert traces[0].endswith('TRACE_LOST_EVENTS: the kernel dropped trace events here')
+
+
+def test_traces_forget_the_calls_of_terminated_threads():
+    events = [
+        _kd_buf(1000, 0x40c0014 | 1, (0x16b000000, 0, 0, 0), tid=200),  # open start, never ends
+        _kd_buf(1001, 0x1400140, (0, 3, 0, 0), tid=200),  # MACH_PSET_AVG_EXEC_TIME
+        _kd_buf(1002, 0x700000c, (200, 0, 0, 0), tid=100),  # TRACE_DATA_THREAD_TERMINATE: tid 200
+    ]
+    parser = TracesParser(default_trace_codes(), {}, {})
+    traces = list(parser.feed_generator(PyKdebugParser().kevents(BytesIO(V2_HEADER + b''.join(events)))))
+    assert str(traces[-1]) == 'Thread terminated tid: 200'
+    assert 200 not in parser.on_going_events
 
 
 def test_traces_dyld_strings_traced_before_the_trace():
