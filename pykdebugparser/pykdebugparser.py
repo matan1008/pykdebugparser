@@ -3,6 +3,7 @@ from datetime import datetime
 from enum import Enum
 import io
 import math
+from functools import lru_cache
 
 from termcolor import colored
 
@@ -10,6 +11,7 @@ from pykdebugparser.callstacks_parser import CallstacksParser
 from pykdebugparser.highlight import highlight
 from pykdebugparser.kd_buf_parser import KdBufParser
 from pykdebugparser.kevent import DgbFuncQual
+from pykdebugparser.line_filter import emphasize
 from pykdebugparser.trace_codes import default_trace_codes
 from pykdebugparser.trace_handlers import UnknownEnumValue
 from pykdebugparser.trace_handlers.trace import TRACE_DATA_EXEC, TRACE_DATA_NEWTHREAD, TRACE_DATA_THREAD_TERMINATE_PID, \
@@ -49,6 +51,12 @@ def _jsonable(value):
     return str(value)
 
 
+@lru_cache(maxsize=1 << 14)
+def _emphasized_event(event_rep, spans):
+    """A trace's event colored, with the `spans` (in its plain text) emphasized."""
+    return emphasize(highlight(event_rep), spans)
+
+
 class PyKdebugParser:
     def __init__(self):
         self.filter_tid = None
@@ -67,6 +75,9 @@ class PyKdebugParser:
         self.show_process = True
         self.show_args = True
         self.color = True
+        # A `LineFilter` of the printed traces (their plain text): `formatted_traces` and `dict_traces` only give the
+        # lines it keeps, with its matches emphasized when colored.
+        self.line_filter = None
         self.numer = None
         self.denom = None
         self.mach_absolute_time = None
@@ -172,7 +183,11 @@ class PyKdebugParser:
     def dict_traces(self, kdebug: io.IOBase, trace_codes=None):
         """The traces as JSON-compatible dicts (see `trace_dict`)."""
         trace_codes_map = default_trace_codes() if trace_codes is None else trace_codes
-        return map(lambda t: self.trace_dict(t, trace_codes_map), self.traces(kdebug, trace_codes_map))
+        traces = self.traces(kdebug, trace_codes_map)
+        if self.line_filter:
+            # As printed by `formatted_traces`, so the same traces are kept in both forms.
+            traces = (trace for trace in traces if self.line_filter.keep(self._trace_prefix(trace) + str(trace)))
+        return map(lambda t: self.trace_dict(t, trace_codes_map), traces)
 
     def trace_dict(self, trace, trace_codes=None) -> dict:
         """
@@ -196,7 +211,10 @@ class PyKdebugParser:
         }
 
     def formatted_traces(self, kdebug: io.IOBase, trace_codes=None):
-        return map(lambda t: self._format_trace(t), self.traces(kdebug, trace_codes))
+        traces = self.traces(kdebug, trace_codes)
+        if self.line_filter:
+            return (line for line in map(self._format_filtered_trace, traces) if line is not None)
+        return map(self._format_trace, traces)
 
     def callstacks(self, kdebug: io.IOBase, trace_codes=None):
         callstacks_parser = CallstacksParser(self.dyld_addresses, self.dyld_uuids)
@@ -280,7 +298,8 @@ class PyKdebugParser:
         formatted_data += f'{str(event.data):<34}' if self.show_args else ''
         return formatted_data
 
-    def _format_trace(self, trace):
+    def _trace_prefix(self, trace):
+        """The columns before the event: time, thread and process."""
         tid = trace.ktraces[0].tid
         formatted_data = ''
         if self.show_timestamp:
@@ -288,11 +307,31 @@ class PyKdebugParser:
         formatted_data += f'{tid:>11} ' if self.show_tid else ''
         if self.show_process:
             formatted_data += f'{self._format_process(tid):<34}'
+        return formatted_data
+
+    def _format_trace(self, trace):
         event_rep = str(trace)
         if self.color:
             event_rep = highlight(event_rep)
+        return self._trace_prefix(trace) + event_rep
 
-        return formatted_data + event_rep
+    def _format_filtered_trace(self, trace):
+        """The trace's line if `line_filter` keeps it (colored only then), `None` otherwise."""
+        prefix = self._trace_prefix(trace)
+        event_rep = str(trace)
+        line = prefix + event_rep
+        if not self.color:
+            return line if self.line_filter.keep(line) else None
+        spans = self.line_filter.kept_spans(line)
+        if spans is None:
+            return None
+        if not spans:
+            return prefix + highlight(event_rep)
+        # The prefix is plain, and the event's emphasized form is cached like its colors: most lines repeat it.
+        split = len(prefix)
+        return (emphasize(prefix, [(start, min(end, split)) for start, end in spans if start < split])
+                + _emphasized_event(event_rep, tuple((max(start, split) - split, end - split)
+                                                     for start, end in spans if end > split)))
 
     def _format_callstack(self, callstack):
         tid = callstack.tid
